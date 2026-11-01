@@ -1,0 +1,87 @@
+# ==============================================================
+# Flowcheck — archivos que NUNCA deben subirse al repositorio
+# ==============================================================
+
+# ---------- Secretos y variables de entorno ----------
+# Todas las variantes de .env (claves de Supabase, VAPID, CRON_SECRET…)
+.env
+.env.*
+*.env
+# …excepto la plantilla sin valores reales, que sí se versiona
+!.env.example
+
+# Llaves, certificados y credenciales sueltas
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+secrets/
+credentials*.json
+service-account*.json
+*-secret*
+*.secret
+
+# ---------- Vercel / Supabase (config local y tokens) ----------
+.vercel/
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/seed.local.sql
+
+# ---------- Dependencias ----------
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# ---------- Builds y caches ----------
+dist/
+dist-ssr/
+dev-dist/
+build/
+.vite/
+.cache/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# ---------- Logs ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# ---------- Respaldos y dumps de base de datos ----------
+*.dump
+*.sql.gz
+*.backup
+backup*/
+*.bak
+
+# ---------- Exportaciones con datos personales ----------
+flowcheck-datos-*.json
+flowcheck-movimientos-*.csv
+
+# ---------- Editor / IDE ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+
+# ---------- Configuración local de herramientas ----------
+.claude/settings.local.json
+
+# ---------- Sistema operativo ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
