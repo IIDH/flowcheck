@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Captcha, { captchaEnabled } from '../components/Captcha'
 import { Logo } from '../components/Layout'
@@ -27,6 +27,18 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const [googleEnabled, setGoogleEnabled] = useState(false)
+
+  // Login con Google desactivado por ahora. Para activarlo: configurar el proveedor
+  // en Supabase y definir VITE_ENABLE_GOOGLE=true. Aun así, solo se muestra si
+  // Supabase lo reporta activo (si no, respondería un JSON de error).
+  useEffect(() => {
+    if (import.meta.env.VITE_ENABLE_GOOGLE !== 'true') return
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => setGoogleEnabled(Boolean(s?.external?.google)))
+      .catch(() => setGoogleEnabled(false))
+  }, [])
   const [captchaToken, setCaptchaToken] = useState(null)
   const [captchaKey, setCaptchaKey] = useState(0)
 
@@ -97,7 +109,7 @@ export default function Login() {
             </div>
           ) : (
             <form onSubmit={submit} className="stack" style={{ gap: 14 }} noValidate>
-              {mode !== 'reset' && (
+              {mode !== 'reset' && googleEnabled && (
                 <>
                   <button type="button" className="btn btn-google dc-cta btn-block" onClick={google} disabled={busy}>
                     <GoogleIcon /> Continuar con Google
