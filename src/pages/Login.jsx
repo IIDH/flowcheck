@@ -1,4 +1,3 @@
-import { InstallBanner } from '../components/InstallGuide'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Captcha, { captchaEnabled } from '../components/Captcha'
@@ -161,7 +160,6 @@ export default function Login() {
             )}
           </div>
         </div>
-        <div style={{ marginTop: 14 }}><InstallBanner /></div>
         <p className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 18 }}>
           <Link to="/privacidad" className="legal-link">Privacidad</Link> · <Link to="/terminos" className="legal-link">Términos</Link>
         </p>

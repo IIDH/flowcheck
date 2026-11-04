@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom'
-import { InstallCard } from '../components/InstallGuide'
 import PageHead from '../components/PageHead'
 import { IconArrow, IconGear, IconLogout, IconMoon, IconPiggy, IconSun } from '../components/Icons'
 import { useApp } from '../context/AppContext'
@@ -30,9 +29,6 @@ export default function Mas() {
           <span className="kpi-icon"><IconLogout size={16} /></span>
           <span><b>Cerrar sesión</b><small>{user?.email}</small></span>
         </button>
-      </div>
-      <div className="card" style={{ marginTop: 18 }}>
-        <InstallCard />
       </div>
     </>
   )
