@@ -151,8 +151,6 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
 
   async function submit(e) {
     e.preventDefault()
-    // "Anotar y seguir" deja la hoja abierta para el siguiente
-    const keepOpen = e.nativeEvent?.submitter?.value === 'more'
     const value = parseAmount(amount)
     if (!(value > 0)) return notify('Ingresa un monto mayor a 0', 'error')
     if (!accountId) return notify(mode === 'gasto' ? '¿En qué lo gastaste? Elige una categoría' : 'Elige de dónde viene', 'error')
@@ -168,12 +166,9 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
         if (!isNetworkError(error)) throw error
         enqueue({ ...row, accounts: { name: acc.name, kind: acc.kind, color: acc.color } })
         notify('Sin conexión: quedó guardado en el teléfono y se sincroniza al volver la red')
-      } else if (!keepOpen) {
-        // Con "Anotar y seguir" la franja verde de la hoja confirma; el aviso flotante taparía los botones
-        notify(mode === 'ingreso' ? `+${money(value, currency)} sumado a tu plata del mes` : mode === 'ahorro' ? `${money(value, currency)} apartado en ${acc.name}` : `${money(value, currency)} en ${accountId === FREE ? FREE_LABEL : acc.name}`)
       }
       window.dispatchEvent(new CustomEvent('fa-synced'))
-      if (!keepOpen) return onClose()
+      // La hoja queda abierta para el siguiente: la franja verde confirma y "Listo" la cierra
       setAdded((list) => [...list, { id: row.id, name: accountId === FREE ? FREE_LABEL : acc.name, amount: value, plus: mode === 'ingreso' }])
       setAmount('')
       setDescription('')
@@ -201,7 +196,11 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
                 <button type="button" key={k} role="tab" aria-selected={mode === k} className={`${mode === k ? 'on' : ''} m-${k}`} onClick={() => { setMode(k); setSearch('') }}>{v.label}</button>
               ))}
             </div>
-            <button type="button" className="dc-icon-btn" onClick={onClose} aria-label="Cerrar"><IconX size={16} /></button>
+            {added.length > 0 ? (
+              <button type="button" className="btn btn-sm sheet-done" onClick={onClose}>Listo</button>
+            ) : (
+              <button type="button" className="dc-icon-btn" onClick={onClose} aria-label="Cerrar"><IconX size={16} /></button>
+            )}
           </div>
           {added.length > 0 && (
             <div className="sheet-added" role="status">
@@ -277,8 +276,7 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
             </div>
 
             <div className="sheet-foot">
-              <button className="btn btn-ghost" name="action" value="more" disabled={busy}>Anotar y seguir</button>
-              <button className={`btn dc-cta sheet-cta m-${mode}`} name="action" value="close" disabled={busy}>{busy ? 'Guardando…' : MODES[mode].cta}</button>
+              <button className={`btn dc-cta btn-block sheet-cta m-${mode}`} disabled={busy}>{busy ? 'Guardando…' : MODES[mode].cta}</button>
             </div>
           </>
         )}

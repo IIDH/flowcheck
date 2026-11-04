@@ -30,7 +30,7 @@ details.charts[open] summary::after { content: 'Ocultar \25B4'; }
 .sheet-backdrop { align-items: end; }
 .sheet { width: 100%; max-width: 480px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; padding: 0; animation: sheetUp 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
 .sheet-head { flex: none; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
-.sheet-foot { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--bg); }
+.sheet-foot { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--bg); }
 .sheet-added { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); font-size: 13px; font-weight: 700; animation: dcRise 0.3s both; }
 .sheet-added span { color: var(--text); }
 .sheet-added small { display: block; color: var(--muted); font-weight: 500; font-size: 12px; }
@@ -177,3 +177,5 @@ details.archived summary { cursor: pointer; font-size: 13px; }
 .choice small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 3px; }
 .choice-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); flex: none; margin-top: 2px; }
 .choice.on .choice-dot { border-color: var(--primary); box-shadow: inset 0 0 0 4px var(--bg); background: var(--primary); }
+
+.sheet-done { background: var(--ok); box-shadow: none; padding: 0 16px; animation: dcRise 0.3s both; }
