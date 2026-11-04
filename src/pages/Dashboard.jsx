@@ -10,7 +10,7 @@ import { IconAlert, IconArrow, IconCheck, IconInfo, IconPlus } from '../componen
 import { useApp } from '../context/AppContext'
 import { fetchSummary } from '../lib/api'
 import { daysLeftIn, monthFigures } from '../lib/figures'
-import { compact, friendlyError, KINDS, money, periodShort } from '../lib/format'
+import { compact, friendlyError, KINDS, MONTHS_SHORT, money, periodLabel } from '../lib/format'
 import { FREE_LABEL } from '../lib/freeBalance'
 import { CHART } from '../lib/palette'
 import { cacheGet, cacheSet, isNetworkError } from '../lib/offline'
@@ -20,7 +20,7 @@ function ChartTooltip({ active, payload, label, currency, colorFor }) {
   if (!active || !payload?.length) return null
   return (
     <div className="chart-tip">
-      <div className="dc-mono muted">{label}</div>
+      <div className="dc-mono muted">{payload[0]?.payload?.full ?? label}</div>
       {payload.map((p) => (
         <div key={p.dataKey} className="chart-tip-row">
           <span className="swatch" style={{ background: colorFor ? colorFor(p) : p.color }} />
@@ -151,7 +151,9 @@ export default function Dashboard() {
   const accountRows = accounts.filter((a) => a.kind !== 'ingreso' && !a.is_free && (a.planned > 0 || a.actual > 0))
 
   const kindData = ['fijo', 'variable', 'ahorro'].map((key) => ({ key, label: KINDS[key].plural, plan: byKind[key].planned, real: byKind[key].actual }))
-  const histData = history.map((h) => ({ ...h, label: periodShort(h) }))
+  // Eje: "nov" (con año "nov 2025" solo si el historial cruza años); tooltip: "noviembre 2026"
+  const multiYear = new Set(history.map((h) => h.year)).size > 1
+  const histData = history.map((h) => ({ ...h, label: `${MONTHS_SHORT[h.month - 1]}${multiYear ? ` ${h.year}` : ''}`, full: periodLabel(h) }))
 
   return (
     <>
@@ -331,7 +333,7 @@ export default function Dashboard() {
               <div className="card-head">
                 <div>
                   <h3 className="card-title" style={{ fontSize: 15 }}>Historial</h3>
-                  <p className="card-sub">Últimos {histData.length} {histData.length === 1 ? 'mes' : 'meses'}</p>
+                  <p className="card-sub">{histData.length === 1 ? 'Por ahora solo este mes: se va llenando mes a mes' : `Últimos ${histData.length} meses`}</p>
                 </div>
                 <div className="legend">
                   <span className="legend-item"><span className="swatch" style={{ background: c.variable }} />Gastos</span>
