@@ -28,12 +28,18 @@ details.charts[open] summary::after { content: 'Ocultar \25B4'; }
 
 /* ---------- hoja "+" */
 .sheet-backdrop { align-items: end; }
-.sheet { width: 100%; max-width: 480px; max-height: calc(100vh - 24px); overflow-y: auto; border-radius: 22px; padding: 18px 20px 22px; animation: sheetUp 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.sheet { width: 100%; max-width: 480px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; padding: 0; animation: sheetUp 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.sheet-head { flex: none; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.sheet-foot { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--bg); }
+.sheet-added { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); font-size: 13px; font-weight: 700; animation: dcRise 0.3s both; }
+.sheet-added span { color: var(--text); }
+.sheet-added small { display: block; color: var(--muted); font-weight: 500; font-size: 12px; }
 @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
-.sheet-grip { width: 40px; height: 4px; border-radius: 999px; background: var(--line); margin: -6px auto 12px; }
+.sheet-grip { width: 40px; height: 4px; border-radius: 999px; background: var(--line); margin: -4px auto 2px; }
 .sheet-modes button.on.m-ingreso { color: var(--ok); }
 .sheet-modes button.on.m-ahorro { color: var(--primary); }
-.sheet-body { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.sheet-body.is-busy { opacity: 0.6; pointer-events: none; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 0; padding: 16px 20px; margin: 0; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .sheet-amount { display: flex; flex-direction: column; gap: 6px; }
 .sheet-amount input { border: 0; background: transparent; color: var(--text); font: 700 44px var(--font-display); letter-spacing: -0.03em; outline: none; width: 100%; padding: 0; font-variant-numeric: tabular-nums; }
 .sheet-amount input::placeholder { color: color-mix(in oklab, var(--muted) 50%, transparent); }
@@ -47,7 +53,7 @@ details.charts[open] summary::after { content: 'Ocultar \25B4'; }
 
 /* ---------- barra inferior con botón central */
 .tab-add { border: 0; background: none; display: grid; place-items: center; cursor: pointer; padding: 0; }
-.tab-add span { width: 52px; height: 52px; margin-top: -22px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 10px 26px color-mix(in oklab, var(--primary) 45%, transparent); transition: transform 0.2s; }
+.tab-add span { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 10px 26px color-mix(in oklab, var(--primary) 45%, transparent); transition: transform 0.2s; }
 .tab-add:active span { transform: scale(0.92); }
 
 /* ---------- presupuesto */
@@ -140,7 +146,8 @@ details.archived summary { cursor: pointer; font-size: 13px; }
   .onboard-item { grid-template-columns: auto minmax(0, 1fr) 118px; }
   .fa-tabbar { align-items: center; }
   .sheet-backdrop { padding: 0; }
-  .sheet { border-radius: 22px 22px 0 0; max-width: none; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .sheet { border-radius: 22px 22px 0 0; max-width: none; max-height: calc(100dvh - 8px); }
+  .sheet-foot { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 420px) {
   .sheet-extra { grid-template-columns: minmax(0, 1fr); }
