@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import EmptyMonth from '../components/EmptyMonth'
-import { InstallBanner } from '../components/InstallGuide'
 import Onboarding from '../components/Onboarding'
 import PageHead from '../components/PageHead'
 import { useQuickAdd } from '../components/QuickAdd'
@@ -159,7 +158,6 @@ export default function Dashboard() {
     <>
       {head}
       {stale && <div className="alert alert-warn" style={{ marginBottom: 18 }}><IconInfo size={18} /><div>Sin conexión: mostrando los últimos datos guardados en este dispositivo.</div></div>}
-      <InstallBanner />
       <div className="stack dc-rise">
         <div className="grid grid-main">
           <section className="card dc-current hero">

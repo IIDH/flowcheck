@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react'
 import PageHead from '../components/PageHead'
 import { ActivityCard, DataCard, MfaCard } from '../components/SecuritySettings'
-import { InstallCard } from '../components/InstallGuide'
-import { IconInfo, IconLogout } from '../components/Icons'
+import { IconDownload, IconInfo, IconLogout } from '../components/Icons'
 import { useApp } from '../context/AppContext'
 import { api } from '../lib/api'
 import { CURRENCIES, friendlyError } from '../lib/format'
 import { currentSubscription, disablePush, enablePush, pushSupported } from '../lib/push'
 import { supabase } from '../lib/supabase'
 
+let deferredPrompt = null
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredPrompt = e
+  })
+}
+
 export default function Ajustes() {
   const { user, profile, reloadProfile, notify, theme, toggleTheme } = useApp()
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState('CLP')
+  const [canInstall, setCanInstall] = useState(Boolean(deferredPrompt))
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Santiago'
   const [pushOn, setPushOn] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -71,12 +80,26 @@ export default function Ajustes() {
     setCurrency(profile?.currency ?? 'CLP')
   }, [profile])
 
+  useEffect(() => {
+    const onPrompt = () => setCanInstall(true)
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+  }, [])
+
   async function save(e) {
     e.preventDefault()
     const { error } = await saveProfile({ full_name: name.trim() || null, currency })
     if (error) return notify(friendlyError(error), 'error')
     notify('Ajustes guardados')
     reloadProfile()
+  }
+
+  async function install() {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    await deferredPrompt.userChoice
+    deferredPrompt = null
+    setCanInstall(false)
   }
 
   return (
@@ -140,8 +163,14 @@ export default function Ajustes() {
               <span>Tema</span>
               <button className="btn btn-ghost btn-sm" onClick={toggleTheme}>{theme === 'dark' ? 'Oscuro' : 'Claro'}</button>
             </div>
-            <div className="list-row" style={{ gridTemplateColumns: '1fr' }}>
-              <InstallCard />
+            <div className="list-row" style={{ gridTemplateColumns: '1fr auto' }}>
+              <div>
+                <div>Instalar Flowcheck</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {standalone ? 'Ya estás usando la app instalada.' : canInstall ? 'Agrégala a tu pantalla de inicio.' : 'En iPhone: Compartir → "Agregar a inicio".'}
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={install} disabled={!canInstall}><IconDownload size={14} /> Instalar</button>
             </div>
             <div className="list-row" style={{ gridTemplateColumns: '1fr auto' }}>
               <span>Sesión</span>
