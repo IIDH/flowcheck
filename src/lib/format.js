@@ -5,10 +5,10 @@ export const periodLabel = ({ year, month }) => `${MONTHS[month - 1]} ${year}`
 export const periodShort = ({ year, month }) => `${MONTHS_SHORT[month - 1]} ${String(year).slice(2)}`
 
 export const KINDS = {
-  fijo: { label: 'Gasto fijo', plural: 'Gastos fijos', hint: 'Arriendo, servicios, créditos, suscripciones' },
-  variable: { label: 'Gasto variable', plural: 'Gastos variables', hint: 'Supermercado, transporte, salidas' },
-  ahorro: { label: 'Ahorro', plural: 'Ahorro e inversión', hint: 'Fondo de emergencia, metas, inversión' },
-  ingreso: { label: 'Ingreso extra', plural: 'Ingresos extra', hint: 'Bonos, ventas, trabajos puntuales' }
+  fijo: { label: 'Gasto fijo', plural: 'Gastos fijos', hint: 'Lo mismo todos los meses: arriendo, cuentas, créditos' },
+  variable: { label: 'Gasto variable', plural: 'Gastos variables', hint: 'Cambia mes a mes: supermercado, transporte, salidas' },
+  ahorro: { label: 'Ahorro', plural: 'Ahorro', hint: 'Lo que apartas: fondo de emergencia, metas, inversión' },
+  ingreso: { label: 'Otro ingreso', plural: 'Otros ingresos', hint: 'Abonos, transferencias, bonos, ventas' }
 }
 export const KIND_ORDER = ['fijo', 'variable', 'ahorro', 'ingreso']
 

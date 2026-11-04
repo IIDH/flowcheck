@@ -7,12 +7,12 @@ import { useApp } from './context/AppContext'
 import { supabase } from './lib/supabase'
 import Ahorros from './pages/Ahorros'
 import Ajustes from './pages/Ajustes'
-import Cuentas from './pages/Cuentas'
 import Dashboard from './pages/Dashboard'
 import { Privacidad, Terminos } from './pages/Legal'
 import Login from './pages/Login'
 import Movimientos from './pages/Movimientos'
-import Plan from './pages/Plan'
+import Mas from './pages/Mas'
+import Presupuesto from './pages/Presupuesto'
 
 function Splash() {
   return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><div className="skeleton" style={{ width: 64, height: 64, borderRadius: 18 }} /></div>
@@ -42,10 +42,14 @@ function PrivateApp() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
-        <Route path="mes" element={<Plan />} />
-        <Route path="movimientos" element={<Movimientos />} />
+        <Route path="gastos" element={<Movimientos />} />
+        <Route path="presupuesto" element={<Presupuesto />} />
         <Route path="ahorros" element={<Ahorros />} />
-        <Route path="cuentas" element={<Cuentas />} />
+        <Route path="mas" element={<Mas />} />
+        {/* Rutas antiguas (notificaciones y accesos guardados) */}
+        <Route path="movimientos" element={<Movimientos />} />
+        <Route path="mes" element={<Navigate to="/presupuesto" replace />} />
+        <Route path="cuentas" element={<Navigate to="/presupuesto" replace />} />
         <Route path="ajustes" element={<Ajustes />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

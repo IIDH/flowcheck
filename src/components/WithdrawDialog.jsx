@@ -10,7 +10,7 @@ const REASONS = ['Emergencia médica', 'Reparación', 'Gasto imprevisto', 'Cumpl
 
 /**
  * Retiro desde una cuenta de ahorro. Pide motivo obligatorio para dejar historia.
- * La plata retirada queda en el mes como saldo libre para registrar el gasto.
+ * La plata retirada se suma a lo que queda para gastar en el mes.
  */
 export default function WithdrawDialog({ account, balance, onClose, onDone }) {
   const { currency, notify } = useApp()
@@ -41,7 +41,7 @@ export default function WithdrawDialog({ account, balance, onClose, onDone }) {
       const [y, m] = date.split('-').map(Number)
       const month = await supabase.from('months').select('id, closed').eq('year', y).eq('month', m).maybeSingle()
       if (month.error) throw month.error
-      if (!month.data) throw new Error('Ese mes aún no tiene imagen. Créala primero en Mi mes.')
+      if (!month.data) throw new Error('Ese mes aún no tiene presupuesto. Créalo primero en Presupuesto.')
       if (month.data.closed) throw new Error('Ese mes está cerrado. Reábrelo para registrar el retiro.')
       const { error } = await supabase.from('transactions').insert({
         month_id: month.data.id,
@@ -97,7 +97,7 @@ export default function WithdrawDialog({ account, balance, onClose, onDone }) {
           <div className="alert alert-warn" style={{ marginTop: 10 }}><IconAlert size={18} /><div>El retiro supera el saldo registrado de esta cuenta.</div></div>
         )}
         <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-          La plata retirada queda disponible en el mes como <b>saldo libre</b>: registra el gasto en Movimientos eligiendo "Saldo libre" (o la cuenta que corresponda).
+          La plata que sacas se suma a lo que te queda para gastar este mes. Cuando la gastes, anótala con el botón <b>+</b>.
         </p>
 
         <div className="row" style={{ marginTop: 18, justifyContent: 'flex-end' }}>

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { money, pct } from '../lib/format'
 
 /**
- * Barra 100% que reparte un total (la renta) en segmentos.
- * Es la "imagen" del mes: cuánto va a fijos, variables, ahorro y qué queda libre.
+ * Barra 100% que reparte lo que entra en el mes: cuánto va a fijos,
+ * variables, ahorro y qué queda libre.
  */
 export default function ImageBar({ segments, total, currency, showLegend = true }) {
   const [hover, setHover] = useState(null)
@@ -28,10 +28,10 @@ export default function ImageBar({ segments, total, currency, showLegend = true 
       <div className="imgbar-tip num">
         {h ? (
           <>
-            <b style={{ color: 'var(--text)' }}>{h.label}</b> · {money(h.value, currency)} · {pct(total > 0 ? h.value / total : 0)} de la renta
+            <b style={{ color: 'var(--text)' }}>{h.label}</b> · {money(h.value, currency)} · {pct(total > 0 ? h.value / total : 0)} de lo que entra
           </>
         ) : sum > total && total > 0 ? (
-          <span style={{ color: 'var(--danger)' }}>Supera la renta en {money(sum - total, currency)}</span>
+          <span style={{ color: 'var(--danger)' }}>Supera lo que entra en {money(sum - total, currency)}</span>
         ) : null}
       </div>
       {showLegend && (

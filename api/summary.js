@@ -77,10 +77,11 @@ export default async function handler(req, res) {
   // Sobrante (o déficit) que dejó el mes anterior al cerrarse
   const prevMonth = months.data[months.data.indexOf(current) + 1]
   const carryIn = prevMonth?.closed ? Number(prevMonth.carry_out ?? 0) : 0
-  const planBase = renta + carryIn
   // Retiros de ahorro del mes: entran como plata disponible (saldo libre)
   const withdrawn = round(accounts.reduce((t, a) => t + a.withdrawn, 0))
   const totalIncome = renta + extra + carryIn + withdrawn
+  // Base para repartir: sueldo + abonos/otros ingresos + arrastre + retiros
+  const planBase = totalIncome
 
   const kpis = {
     renta,
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
     // Saldo libre: lo sin asignar de la imagen que se puede gastar sin cuenta
     freeUsed: round(accounts.filter((a) => a.is_free).reduce((t, a) => t + a.actual, 0))
   }
-  kpis.freeLeft = round(kpis.unassigned + withdrawn - kpis.freeUsed)
+  kpis.freeLeft = round(kpis.unassigned - kpis.freeUsed)
 
   // Proyección del gasto variable al cierre (solo si el periodo es el mes en curso)
   const today = /^\d{4}-\d{2}-\d{2}$/.test(req.query.today || '') ? new Date(`${req.query.today}T12:00:00`) : new Date()

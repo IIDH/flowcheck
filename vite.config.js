@@ -14,6 +14,8 @@ export default defineConfig({
         short_name: 'Flowcheck',
         description: 'Tu imagen financiera del mes: gastos fijos, ahorro y lo que vas gastando.',
         lang: 'es',
+        // Identidad fija de la app: aunque cambie start_url, sigue siendo la misma instalación
+        id: '/',
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -35,6 +37,8 @@ export default defineConfig({
     })
   ],
   build: {
+    // Sin fuentes/imágenes incrustadas como data: (la CSP solo permite font-src 'self')
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
         manualChunks(id) {

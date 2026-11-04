@@ -1,22 +1,36 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { openMonth } from '../lib/api'
-import { friendlyError, parseAmount, periodLabel } from '../lib/format'
+import { friendlyError, money, parseAmount, periodLabel } from '../lib/format'
+import { supabase } from '../lib/supabase'
 import { IconArrow, IconCalendar } from './Icons'
 
-/** Mes sin "imagen": pide la renta y la crea copiando el plan anterior. */
+/** Mes sin presupuesto: lo crea copiando el del último mes (con el sueldo que indiques). */
 export default function EmptyMonth({ onOpened, hasAccounts = true }) {
-  const { period, notify } = useApp()
+  const { period, notify, currency } = useApp()
   const [income, setIncome] = useState('')
+  const [prev, setPrev] = useState(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('months')
+      .select('*')
+      .or(`year.lt.${period.year},and(year.eq.${period.year},month.lt.${period.month})`)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setPrev(data ?? null))
+  }, [period.year, period.month])
 
   async function create(e) {
     e.preventDefault()
     setBusy(true)
     try {
       const r = await openMonth(period, income.trim() === '' ? undefined : parseAmount(income))
-      notify(r.copiedFrom ? 'Imagen creada a partir del mes anterior' : 'Imagen del mes creada')
+      notify(r.copiedFrom ? 'Listo: partimos con el presupuesto del mes anterior' : 'Presupuesto del mes creado')
       onOpened?.(r.month)
     } catch (err) {
       notify(friendlyError(err), 'error')
@@ -25,31 +39,38 @@ export default function EmptyMonth({ onOpened, hasAccounts = true }) {
     }
   }
 
+  if (!hasAccounts) {
+    return (
+      <div className="card empty dc-current" style={{ maxWidth: 520, margin: '24px auto' }}>
+        <div className="empty-icon"><IconCalendar size={26} /></div>
+        <h2 style={{ fontSize: 22 }}>Aún no armas tu presupuesto</h2>
+        <p className="lead" style={{ margin: '10px auto 22px' }}>Toma un minuto: tu sueldo y en qué gastas.</p>
+        <Link to="/" className="btn dc-cta">Empezar <IconArrow className="arrow" size={16} /></Link>
+      </div>
+    )
+  }
+
   return (
-    <div className="card empty dc-current" style={{ maxWidth: 560, margin: '24px auto' }}>
+    <div className="card empty dc-current" style={{ maxWidth: 520, margin: '24px auto' }}>
       <div className="empty-icon"><IconCalendar size={26} /></div>
-      <h2 style={{ fontSize: 24 }}>Aún no hay imagen para {periodLabel(period)}</h2>
-      <p className="lead" style={{ margin: '10px auto 24px' }}>
-        Ingresa la renta del mes y Flowcheck arma tu plan: copia lo planificado el mes anterior y suma tus cuentas nuevas con su monto por defecto.
+      <h2 style={{ fontSize: 22, textTransform: 'none' }}>Empecemos {periodLabel(period)}</h2>
+      <p className="lead" style={{ margin: '10px auto 22px' }}>
+        {prev ? <>Copiamos el presupuesto de {periodLabel(prev)} para que no partas de cero. ¿Cambió tu sueldo?</> : <>¿Cuánto ganas este mes?</>}
       </p>
-      {!hasAccounts ? (
-        <Link to="/cuentas" className="btn dc-cta">Primero crea tus cuentas <IconArrow className="arrow" size={16} /></Link>
-      ) : (
-        <form onSubmit={create} className="row" style={{ maxWidth: 400, margin: '0 auto', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <input
-            className="input input-money"
-            style={{ flex: '1 1 180px' }}
-            inputMode="decimal"
-            placeholder="Renta del mes (opcional)"
-            value={income}
-            onChange={(e) => setIncome(e.target.value)}
-            aria-label="Renta del mes"
-          />
-          <button className="btn dc-cta" disabled={busy}>
-            {busy ? 'Creando…' : 'Crear imagen'} <IconArrow className="arrow" size={16} />
-          </button>
-        </form>
-      )}
+      <form onSubmit={create} className="row" style={{ maxWidth: 420, margin: '0 auto', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <input
+          className="input input-money"
+          style={{ flex: '1 1 180px' }}
+          inputMode="decimal"
+          placeholder={prev ? `Igual: ${money(prev.income, currency)}` : 'Tu sueldo del mes'}
+          value={income}
+          onChange={(e) => setIncome(e.target.value)}
+          aria-label="Sueldo del mes"
+        />
+        <button className="btn dc-cta" disabled={busy}>
+          {busy ? 'Creando…' : `Empezar ${periodLabel(period).split(' ')[0]}`} <IconArrow className="arrow" size={16} />
+        </button>
+      </form>
     </div>
   )
 }

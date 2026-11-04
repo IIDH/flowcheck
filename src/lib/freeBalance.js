@@ -19,16 +19,5 @@ export async function ensureFreeAccount(accounts) {
   return created.data.id
 }
 
-/**
- * Saldo libre del mes: lo que quedó sin asignar en la imagen (renta + arrastre −
- * planificado) más lo retirado de ahorros, menos lo ya gastado desde él.
- */
-export function freeBalance({ income = 0, carryIn = 0, rows = [] }) {
-  const planned = rows.filter((r) => !r.is_free && r.kind !== 'ingreso').reduce((s, r) => s + r.planned, 0)
-  const unassigned = Number(income) + carryIn - planned
-  // Lo retirado de ahorros este mes también queda como saldo libre para gastar
-  const withdrawn = rows.reduce((s, r) => s + (r.withdrawn || 0), 0)
-  const used = rows.filter((r) => r.is_free).reduce((s, r) => s + r.actual, 0)
-  const pool = unassigned + withdrawn
-  return { unassigned, withdrawn, pool, used, left: pool - used }
-}
+/** Nombre visible de la cuenta de sistema "Saldo libre". */
+export const FREE_LABEL = 'Sin categoría'

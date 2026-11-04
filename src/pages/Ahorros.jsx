@@ -55,7 +55,7 @@ export default function Ahorros() {
 
   return (
     <>
-      <PageHead eyebrow="Ahorros" title="Tus ahorros" accent="y su historia" lead="Lo que has juntado en cada cuenta, los retiros que hiciste y por qué. Si pasa una emergencia, retira desde aquí." picker={false} />
+      <PageHead eyebrow="Ahorros" title="Tus ahorros" accent="y su historia" lead="Lo que has juntado, lo que sacaste y por qué. Si pasa una emergencia, saca plata desde aquí." picker={false} />
 
       {error ? (
         <div className="alert alert-danger"><IconAlert size={18} /><div>{error}</div></div>
@@ -64,9 +64,9 @@ export default function Ahorros() {
       ) : balances.length === 0 ? (
         <div className="card empty">
           <div className="empty-icon"><IconPiggy size={26} /></div>
-          <h3>Aún no tienes cuentas de ahorro</h3>
-          <p className="lead" style={{ margin: '10px auto 20px' }}>Crea una en Cuentas con el tipo "Ahorro" y su saldo inicial.</p>
-          <Link to="/cuentas" className="btn dc-cta">Ir a Cuentas <IconArrow className="arrow" size={16} /></Link>
+          <h3>Aún no tienes categorías de ahorro</h3>
+          <p className="lead" style={{ margin: '10px auto 20px' }}>Agrégala en Presupuesto, en la sección Ahorro.</p>
+          <Link to="/presupuesto" className="btn dc-cta">Ir a Presupuesto <IconArrow className="arrow" size={16} /></Link>
         </div>
       ) : (
         <div className="stack dc-rise">
@@ -96,7 +96,7 @@ export default function Ahorros() {
             <div className="card-head">
               <div>
                 <h3 className="card-title">Historia</h3>
-                <p className="card-sub">Aportes y retiros de todas tus cuentas de ahorro</p>
+                <p className="card-sub">Lo que apartaste y lo que sacaste</p>
               </div>
             </div>
             <div className="row" style={{ flexWrap: 'wrap', marginBottom: 16 }}>

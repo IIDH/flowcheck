@@ -44,6 +44,12 @@ export function useMonth() {
     load()
   }, [load])
 
+  // Se recarga cuando se anota algo desde la hoja "+" o se sincroniza la cola
+  useEffect(() => {
+    window.addEventListener('fa-synced', load)
+    return () => window.removeEventListener('fa-synced', load)
+  }, [load])
+
   return { ...state, reload: load }
 }
 

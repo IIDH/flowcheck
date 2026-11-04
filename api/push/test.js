@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const { sent, gone } = await sendPush(subs, {
       title: 'Flowcheck · prueba',
       body: 'Así te avisaremos cuando un gasto fijo esté por vencer.',
-      url: '/mes',
+      url: '/presupuesto',
       tag: 'flowcheck-test'
     })
     if (gone.length) await sb.from('push_subscriptions').delete().in('id', gone)

@@ -52,7 +52,7 @@ export default function CloseMonthDialog({ available, savingsAccounts, onClose, 
         {available > 0 ? (
           <div className="stack" style={{ gap: 14, marginTop: 18 }}>
             {savingsAccounts.length === 0 ? (
-              <p className="muted" style={{ fontSize: 14 }}>No tienes cuentas de ahorro: todo el sobrante pasará al mes siguiente. Puedes crear una en Cuentas.</p>
+              <p className="muted" style={{ fontSize: 14 }}>No tienes categorías de ahorro: todo lo que sobró pasará al mes siguiente. Puedes crear una en Presupuesto.</p>
             ) : (
               <>
                 <label className="field">

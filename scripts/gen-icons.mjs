@@ -4,14 +4,12 @@ import fs from 'node:fs'
 import sharp from 'sharp'
 
 const svg = fs.readFileSync('public/favicon.svg')
-// Versión maskable: el logo con margen de seguridad sobre fondo de color pleno.
+// Versión maskable: fondo a sangre y la marca reducida al 70% (zona segura).
 const maskable = Buffer.from(
-  svg.toString()
-    .replace('<rect width="64" height="64" rx="16" fill="url(#g)"/>', '<rect width="64" height="64" fill="url(#g)"/>')
-    .replace(/<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/g, (_, x, y, w, h) => {
-      const s = 0.7, o = 32 * (1 - s)
-      return `<rect x="${(+x * s + o).toFixed(1)}" y="${(+y * s + o).toFixed(1)}" width="${(+w * s).toFixed(1)}" height="${(+h * s).toFixed(1)}"`
-    })
+  svg
+    .toString()
+    .replace('rx="16"', '')
+    .replace('<g id="mark"', '<g id="mark" transform="translate(9.6 9.6) scale(0.7)"')
 )
 
 const jobs = [
