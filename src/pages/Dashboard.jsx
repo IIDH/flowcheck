@@ -2,12 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import EmptyMonth from '../components/EmptyMonth'
-import ImageBar from '../components/ImageBar'
+import { InstallBanner } from '../components/InstallGuide'
+import Onboarding from '../components/Onboarding'
 import PageHead from '../components/PageHead'
-import { IconAlert, IconArrow, IconCoins, IconInfo, IconPiggy, IconTrend, IconWallet } from '../components/Icons'
+import { useQuickAdd } from '../components/QuickAdd'
+import { IconAlert, IconArrow, IconCheck, IconInfo, IconPlus } from '../components/Icons'
 import { useApp } from '../context/AppContext'
 import { fetchSummary } from '../lib/api'
-import { compact, friendlyError, KINDS, money, pct, periodShort } from '../lib/format'
+import { daysLeftIn, monthFigures } from '../lib/figures'
+import { compact, friendlyError, KINDS, money, periodShort } from '../lib/format'
+import { FREE_LABEL } from '../lib/freeBalance'
 import { CHART } from '../lib/palette'
 import { cacheGet, cacheSet, isNetworkError } from '../lib/offline'
 import { supabase } from '../lib/supabase'
@@ -28,55 +32,69 @@ function ChartTooltip({ active, payload, label, currency, colorFor }) {
   )
 }
 
-function Kpi({ icon: Icon, label, value, sub, progress, tone }) {
+function alertText(a, currency) {
+  const m = money(a.amount, currency)
+  switch (a.type) {
+    case 'plan_over_income': return <>Tu presupuesto reparte <b>{m}</b> más de lo que entra este mes. Ajusta montos en Presupuesto.</>
+    case 'over_budget': return <><b>{a.account}</b> se pasó <b>{m}</b> de lo presupuestado.</>
+    case 'unplanned': return <><b>{a.account}</b> tiene {m} gastados sin monto presupuestado.</>
+    case 'saving_short': return <>Te faltaron <b>{m}</b> para tu meta de ahorro del mes.</>
+    case 'free_over': return <>Gastaste <b>{m}</b> más de tu plata libre.</>
+    case 'pace': return <>A este ritmo, tus gastos variables terminarían el mes <b>{m}</b> sobre lo presupuestado.</>
+    default: return null
+  }
+}
+
+/** Barra de avance de un grupo (fijos, variables, ahorro). */
+function GroupCard({ title, actual, planned, sub, tone, done }) {
+  const ratio = planned > 0 ? actual / planned : actual > 0 ? 1 : 0
   return (
-    <div className="card dc-lift">
-      <div className="kpi-label">
-        <span className="kpi-icon"><Icon size={16} /></span>
-        <span className="dc-mono muted">{label}</span>
+    <div className="card group-card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <span className="dc-mono muted">{title}</span>
+        {done && <span className="badge badge-ok"><IconCheck size={11} /> Listo</span>}
       </div>
-      <div className="kpi-value" title={value}>{value}</div>
-      {progress != null && (
-        <div className={`progress ${tone || ''}`} style={{ marginTop: 12 }}>
-          <span style={{ width: `${Math.min(progress * 100, 100)}%` }} />
-        </div>
-      )}
+      <div className="group-value num">{actual}<span> / {planned}</span></div>
+      <div className={`progress ${tone || ''}`} style={{ marginTop: 10 }}>
+        <span style={{ width: `${Math.min(ratio * 100, 100)}%` }} />
+      </div>
       <div className="kpi-sub">{sub}</div>
     </div>
   )
 }
 
-function alertText(a, currency) {
-  const m = money(a.amount, currency)
-  switch (a.type) {
-    case 'plan_over_income': return <>Tu imagen planificada supera la renta en <b>{m}</b>. Ajusta montos en Mi mes.</>
-    case 'over_budget': return <><b>{a.account}</b> superó lo planificado en <b>{m}</b>.</>
-    case 'unplanned': return <><b>{a.account}</b> tiene {m} en gastos sin presupuesto asignado.</>
-    case 'pending_fixed': return <>{a.count} {a.count === 1 ? 'gasto fijo pendiente' : 'gastos fijos pendientes'} por <b>{m}</b>: {a.accounts.slice(0, 4).join(', ')}{a.accounts.length > 4 ? '…' : ''}.</>
-    case 'saving_short': return <>Quedaste <b>{m}</b> bajo tu meta de ahorro del mes.</>
-    case 'withdrawn': return <>Retiraste <b>{m}</b> de ahorros este mes ({a.accounts.join(', ')}). Queda como saldo libre para cubrir el gasto.</>
-    case 'free_over': return <>Gastaste <b>{m}</b> más de lo que tenías como saldo libre.</>
-    case 'pace': return <>Al ritmo actual, tus gastos variables cerrarían el mes <b>{m}</b> sobre lo planificado.</>
-    default: return null
-  }
-}
-
 export default function Dashboard() {
   const { period, currency, theme, user } = useApp()
+  const openAdd = useQuickAdd()
   const [stale, setStale] = useState(false)
   const c = CHART[theme]
   const [data, setData] = useState(null)
-  const [hasAccounts, setHasAccounts] = useState(true)
+  const [recent, setRecent] = useState([])
+  const [hasAccounts, setHasAccounts] = useState(null)
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
     setError(null)
     const key = `${user?.id}:summary:${period.year}-${period.month}`
+    supabase
+      .from('accounts')
+      .select('id', { count: 'exact', head: true })
+      .then(({ count, error: e }) => setHasAccounts(e ? true : (count ?? 0) > 0))
     try {
       const d = await fetchSummary(period)
       cacheSet(key, d)
       setData(d)
       setStale(false)
+      if (d.month) {
+        const r = await supabase
+          .from('transactions')
+          .select('*, accounts(name, kind, color, is_free)')
+          .eq('month_id', d.month.id)
+          .order('occurred_on', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(5)
+        setRecent(r.data ?? [])
+      }
     } catch (err) {
       const cached = cacheGet(key)
       if (cached && isNetworkError(err)) {
@@ -98,257 +116,242 @@ export default function Dashboard() {
   useEffect(() => {
     setData(null)
     load()
-    supabase.from('accounts').select('id', { count: 'exact', head: true }).then(({ count }) => setHasAccounts((count ?? 0) > 0))
   }, [load])
 
-  const head = <PageHead eyebrow="Dashboard" title="Tu imagen" accent="del mes" lead="Lo que planificaste contra lo que va pasando: gastos fijos, variables, ahorro y lo disponible." />
+  const head = <PageHead eyebrow="Inicio" title="Tu" accent="mes" />
 
   if (error) {
     return (
       <>
         {head}
-        <div className="alert alert-danger"><IconAlert size={18} /><div>No se pudo cargar el resumen: {error}. Revisa que la API esté corriendo (<code>npm run dev</code>) y las variables de entorno.</div></div>
+        <div className="alert alert-danger"><IconAlert size={18} /><div>No se pudo cargar el resumen: {error}.</div></div>
       </>
     )
   }
-  if (!data) {
+  if (!data || hasAccounts === null) {
     return (
       <>
         {head}
-        <div className="grid grid-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 140 }} />)}</div>
-        <div className="skeleton" style={{ height: 320, marginTop: 18 }} />
+        <div className="skeleton" style={{ height: 220 }} />
+        <div className="grid grid-3" style={{ marginTop: 18 }}>{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 130 }} />)}</div>
       </>
     )
   }
-  if (!data.month) return <>{head}<EmptyMonth hasAccounts={hasAccounts} onOpened={load} /></>
+  if (!hasAccounts) return <Onboarding onDone={load} />
+  if (!data.month) return <>{head}<EmptyMonth hasAccounts onOpened={load} /></>
 
-  const { kpis: k, byKind, accounts, history, alerts, projection, savings } = data
+  const { kpis: k, byKind, accounts, history, alerts, savings } = data
+  const f = monthFigures({ income: k.renta, carryIn: k.carryIn, rows: accounts })
+  const days = daysLeftIn(period)
+  const m = (v) => money(v, currency)
 
-  const planSegments = [
-    { key: 'fijo', label: 'Fijos', value: byKind.fijo.planned, color: c.fijo },
-    { key: 'variable', label: 'Variables', value: byKind.variable.planned, color: c.variable },
-    { key: 'ahorro', label: 'Ahorro', value: byKind.ahorro.planned, color: c.ahorro },
-    { key: 'free', label: 'Sin asignar', value: Math.max(k.unassigned, 0), color: c.free }
-  ]
-  const realSegments = [
-    { key: 'fijo', label: 'Fijos', value: byKind.fijo.actual, color: c.fijo },
-    { key: 'variable', label: 'Variables', value: byKind.variable.actual, color: c.variable },
-    { key: 'ahorro', label: 'Ahorro', value: byKind.ahorro.actual, color: c.ahorro },
-    { key: 'free', label: 'Disponible', value: Math.max(k.available, 0), color: c.free }
-  ]
-
-  const kindData = ['fijo', 'variable', 'ahorro'].map((key) => ({
-    key,
-    label: KINDS[key].plural.replace(' e inversión', ''),
-    plan: byKind[key].planned,
-    real: byKind[key].actual
-  }))
-
-  const histData = history.map((h) => ({ ...h, label: periodShort(h) }))
+  const pendingFixed = f.fijo.list.filter((a) => a.actual < a.planned)
+  const shownAlerts = alerts.filter((a) => !['pending_fixed', 'withdrawn'].includes(a.type))
   const accountRows = accounts.filter((a) => a.kind !== 'ingreso' && !a.is_free)
+
+  const kindData = ['fijo', 'variable', 'ahorro'].map((key) => ({ key, label: KINDS[key].plural, plan: byKind[key].planned, real: byKind[key].actual }))
+  const histData = history.map((h) => ({ ...h, label: periodShort(h) }))
 
   return (
     <>
       {head}
       {stale && <div className="alert alert-warn" style={{ marginBottom: 18 }}><IconInfo size={18} /><div>Sin conexión: mostrando los últimos datos guardados en este dispositivo.</div></div>}
+      <InstallBanner />
       <div className="stack dc-rise">
-        <div className="grid grid-4">
-          <Kpi icon={IconWallet} label="Ingresos del mes" value={money(k.totalIncome, currency)} sub={[
-              k.extra > 0 && `+${money(k.extra, currency)} extra`,
-              k.withdrawn > 0 && `+${money(k.withdrawn, currency)} retirado de ahorros`,
-              k.carryIn !== 0 && `${k.carryIn > 0 ? '+' : '−'}${money(Math.abs(k.carryIn), currency)} del mes anterior`
-            ].filter(Boolean).join(' · ') || 'Ingreso base del mes'} />
-          <Kpi
-            icon={IconCoins}
-            label="Gastado"
-            value={money(k.spent, currency)}
-            progress={k.plannedSpend > 0 ? k.spent / k.plannedSpend : 0}
-            tone={k.spent > k.plannedSpend ? 'over' : ''}
-            sub={`de ${money(k.plannedSpend, currency)} planificado`}
-          />
-          <Kpi
-            icon={IconPiggy}
-            label="Ahorrado"
-            value={money(k.saved, currency)}
-            progress={k.plannedSave > 0 ? k.saved / k.plannedSave : 0}
-            tone="ok"
-            sub={savings ? `este mes de ${money(k.plannedSave, currency)} · total acumulado ${money(savings.total, currency)}` : `meta ${money(k.plannedSave, currency)} · ${pct(k.savingsRate)} de tus ingresos`}
-          />
-          <Kpi icon={IconTrend} label="Disponible" value={money(k.available, currency)} sub={projection ? `≈ ${money(projection.dailyBudgetLeft, currency)} por día en variables` : 'Ingresos − gastos − ahorro'} />
-        </div>
-
         <div className="grid grid-main">
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <h3 className="card-title">Imagen vs realidad</h3>
-                <p className="card-sub">Cómo planificaste repartir la renta y cómo se está repartiendo de verdad.</p>
-              </div>
-              <Link to="/mes" className="btn btn-ghost btn-sm dc-cta">Editar imagen <IconArrow className="arrow" size={14} /></Link>
+          <section className="card dc-current hero">
+            <span className="dc-mono muted">{f.canSpend >= 0 ? 'Te quedan para gastar' : 'Te pasaste por'}</span>
+            <div className={`hero-value num ${f.canSpend < 0 ? 'neg' : ''}`}>{m(Math.abs(f.canSpend))}</div>
+            <p className="hero-sub">
+              {f.canSpend >= 0 ? (
+                <>
+                  {f.variable.left > 0 && <><b>{m(f.variable.left)}</b> en tus gastos variables · </>}
+                  <b>{m(Math.max(f.free, 0))}</b> libres
+                  {f.free < 0 && <span style={{ color: 'var(--danger)' }}> (te pasaste {m(-f.free)} de lo libre)</span>}
+                </>
+              ) : (
+                <>Gastaste más de lo que entró este mes después de tus gastos fijos y ahorro.</>
+              )}
+            </p>
+            {days && f.canSpend > 0 && <p className="hero-day num">≈ {m(f.canSpend / days)} por día · quedan {days} {days === 1 ? 'día' : 'días'}</p>}
+            <p className="hero-note">Ya descontamos lo que falta pagar de tus gastos fijos y tu meta de ahorro.</p>
+            <div className="row hero-actions">
+              <button className="btn dc-cta" onClick={() => openAdd({ mode: 'gasto' })}><IconPlus size={16} /> Anotar gasto</button>
+              <button className="btn btn-ghost" onClick={() => openAdd({ mode: 'ingreso' })}><IconPlus size={16} /> Ingreso</button>
             </div>
-            <div className="dc-mono muted" style={{ marginBottom: 8 }}>Planificado</div>
-            <ImageBar segments={planSegments} total={k.planBase ?? k.renta} currency={currency} />
-            {(k.unassigned + (k.withdrawn || 0)) > 0 && (
-              <div className="card-soft row" style={{ marginTop: 14, justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ fontSize: 14 }}>
-                  <b>Saldo libre</b> <span className="muted">· lo sin asignar que puedes gastar{k.freeUsed > 0 ? ` · usado ${money(k.freeUsed, currency)}` : ''}</span>
-                </span>
-                <b className="num" style={{ color: k.freeLeft < 0 ? 'var(--danger)' : 'var(--text)' }}>Quedan {money(k.freeLeft ?? k.unassigned, currency)}</b>
-              </div>
-            )}
-            <div className="dc-mono muted" style={{ margin: '22px 0 8px' }}>Real a la fecha</div>
-            <ImageBar segments={realSegments} total={k.totalIncome} currency={currency} />
-          </div>
+          </section>
 
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <h3 className="card-title">Alertas</h3>
-                <p className="card-sub">{alerts.length ? 'Lo que conviene mirar este mes' : 'Todo en orden'}</p>
+          <section className="card">
+            <div className="card-head" style={{ marginBottom: 8 }}>
+              <h3 className="card-title">Plata del mes</h3>
+              <b className="num" style={{ fontFamily: 'var(--font-display)', fontSize: 22 }}>{m(f.totalIncome)}</b>
+            </div>
+            <div className="list income-list">
+              <div className="list-row"><span>Sueldo</span><b className="num">{m(f.salary)}</b></div>
+              <div className="list-row">
+                <span>Otros ingresos <span className="muted">· abonos, transferencias</span></span>
+                <b className="num" style={{ color: f.extra > 0 ? 'var(--ok)' : 'var(--muted)' }}>{f.extra > 0 ? '+' : ''}{m(f.extra)}</b>
               </div>
+              {f.carryIn !== 0 && <div className="list-row"><span>Del mes anterior</span><b className="num" style={{ color: f.carryIn < 0 ? 'var(--danger)' : 'var(--ok)' }}>{f.carryIn > 0 ? '+' : '−'}{m(Math.abs(f.carryIn))}</b></div>}
+              {f.withdrawn > 0 && <div className="list-row"><span>Sacado de ahorros</span><b className="num" style={{ color: 'var(--ok)' }}>+{m(f.withdrawn)}</b></div>}
             </div>
-            <div className="stack" style={{ gap: 10 }}>
-              {alerts.length === 0 && (
-                <div className="alert alert-ok"><IconInfo size={18} /><div>Vas dentro de lo planificado. ¡Bien!</div></div>
-              )}
-              {alerts.map((a, i) => (
-                <div key={i} className={`alert alert-${a.level}`}>
-                  {a.level === 'info' ? <IconInfo size={18} /> : <IconAlert size={18} />}
-                  <div>{alertText(a, currency)}</div>
-                </div>
-              ))}
-              {projection && projection.variablePlanned > 0 && (
-                <div className="card-soft" style={{ marginTop: 4 }}>
-                  <div className="dc-mono muted">Proyección variables · día {projection.day}/{projection.daysInMonth}</div>
-                  <div className="row" style={{ marginTop: 8, justifyContent: 'space-between' }}>
-                    <span className="num" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20 }}>{money(projection.projectedVariable, currency)}</span>
-                    <span className="muted" style={{ fontSize: 13 }}>vs {money(projection.variablePlanned, currency)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+            <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 14 }} onClick={() => openAdd({ mode: 'ingreso' })}>
+              <IconPlus size={14} /> Me llegó un abono o transferencia
+            </button>
+          </section>
         </div>
 
-        <div className="grid grid-2">
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <h3 className="card-title">Plan vs real por tipo</h3>
-                <p className="card-sub">Barra gris = planificado · barra de color = real</p>
-              </div>
-              <div className="legend">
-                <span className="legend-item"><span className="swatch" style={{ background: c.plan }} />Planificado</span>
-                <span className="legend-item"><span className="swatch" style={{ background: `linear-gradient(90deg, ${c.fijo}, ${c.variable}, ${c.ahorro})` }} />Real</span>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={kindData} barGap={2} barCategoryGap="30%" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke={c.grid} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 12 }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 11 }} tickFormatter={compact} width={48} />
-                <Tooltip
-                  cursor={{ fill: c.grid }}
-                  content={<ChartTooltip currency={currency} colorFor={(p) => (p.dataKey === 'plan' ? c.plan : c[p.payload.key])} />}
-                />
-                <Bar dataKey="plan" name="Planificado" fill={c.plan} radius={[4, 4, 0, 0]} maxBarSize={44} />
-                <Bar dataKey="real" name="Real" radius={[4, 4, 0, 0]} maxBarSize={44}>
-                  {kindData.map((d) => <Cell key={d.key} fill={c[d.key]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <h3 className="card-title">Historial</h3>
-                <p className="card-sub">Últimos {histData.length} {histData.length === 1 ? 'mes' : 'meses'} registrados</p>
-              </div>
-              <div className="legend">
-                <span className="legend-item"><span className="swatch" style={{ background: c.variable }} />Gastos</span>
-                <span className="legend-item"><span className="swatch" style={{ background: c.ahorro }} />Ahorro</span>
-                <span className="legend-item"><span className="swatch" style={{ background: c.renta, height: 2 }} />Ingresos</span>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={histData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke={c.grid} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 12 }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 11 }} tickFormatter={compact} width={48} />
-                <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: c.axis, strokeDasharray: '3 3' }} />
-                <Line type="monotone" dataKey="renta" name="Ingresos" stroke={c.renta} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-                <Line type="monotone" dataKey="gastado" name="Gastos" stroke={c.variable} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--bg)' }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="ahorrado" name="Ahorro" stroke={c.ahorro} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--bg)' }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="grid grid-3">
+          <GroupCard
+            title="Gastos fijos"
+            actual={m(f.fijo.actual)}
+            planned={m(f.fijo.planned)}
+            done={f.fijo.planned > 0 && pendingFixed.length === 0}
+            sub={pendingFixed.length ? <>Falta pagar <b>{m(f.fijo.left)}</b>: {pendingFixed.slice(0, 3).map((a) => a.name).join(', ')}{pendingFixed.length > 3 ? '…' : ''}</> : f.fijo.planned > 0 ? 'Todo pagado este mes' : 'Sin gastos fijos'}
+          />
+          <GroupCard
+            title="Gastos variables"
+            actual={m(f.variable.actual + f.freeSpent)}
+            planned={m(f.variable.planned)}
+            tone={f.variable.actual > f.variable.planned ? 'over' : ''}
+            sub={f.variable.over > 0 ? <span style={{ color: 'var(--danger)' }}>Te pasaste {m(f.variable.over)} en alguna categoría</span> : <>Quedan <b>{m(f.variable.left)}</b> en tus categorías</>}
+          />
+          <GroupCard
+            title="Ahorro"
+            actual={m(f.ahorro.actual)}
+            planned={m(f.ahorro.planned)}
+            tone="ok"
+            done={f.ahorro.planned > 0 && f.ahorro.left === 0}
+            sub={<>{f.ahorro.left > 0 ? <>Faltan {m(f.ahorro.left)} para tu meta · </> : null}<Link to="/ahorros" className="legal-link">Total ahorrado {m(savings?.total ?? 0)}</Link></>}
+          />
         </div>
 
-        {savings && savings.accounts.length > 0 && (
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <h3 className="card-title">Tus ahorros</h3>
-                <p className="card-sub">Saldo inicial + aportes − retiros</p>
-                <Link to="/ahorros" className="btn btn-ghost btn-sm dc-cta" style={{ marginTop: 10 }}>Ver historia y retirar <IconArrow className="arrow" size={14} /></Link>
+        {shownAlerts.length > 0 && (
+          <div className="stack" style={{ gap: 10 }}>
+            {shownAlerts.slice(0, 3).map((a, i) => (
+              <div key={i} className={`alert alert-${a.level}`}>
+                {a.level === 'info' ? <IconInfo size={18} /> : <IconAlert size={18} />}
+                <div>{alertText(a, currency)}</div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="dc-mono muted">Total acumulado</div>
-                <div className="num" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 26 }}>{money(savings.total, currency)}</div>
-              </div>
-            </div>
-            <div className="grid grid-3">
-              {savings.accounts.map((b) => (
-                <div key={b.account_id} className="card-soft dc-step">
-                  <div className="row"><span className="swatch" style={{ background: b.color }} /><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</b></div>
-                  <div className="num" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 22, marginTop: 10 }}>{money(b.balance, currency)}</div>
-                  <div className="muted num" style={{ fontSize: 12, marginTop: 4 }}>
-                    {money(b.opening_balance, currency)} inicial · +{money(b.contributed, currency)} aportado{b.withdrawn > 0 ? ` · −${money(b.withdrawn, currency)} retirado` : ''}
-                  </div>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
         )}
 
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <h3 className="card-title">Cuentas del mes</h3>
-              <p className="card-sub">Avance de cada cuenta contra su monto planificado</p>
+        <div className="grid grid-2">
+          <section className="card">
+            <div className="card-head">
+              <h3 className="card-title">Últimos movimientos</h3>
+              <Link to="/gastos" className="btn btn-ghost btn-sm">Ver todos <IconArrow className="arrow" size={14} /></Link>
             </div>
-            <Link to="/movimientos?nuevo=1" className="btn btn-sm dc-cta">Registrar movimiento <IconArrow className="arrow" size={14} /></Link>
-          </div>
-          {accountRows.length === 0 ? (
-            <p className="muted">Este mes no tiene cuentas en su imagen todavía.</p>
-          ) : (
-            <div className="list">
-              {accountRows.map((a) => {
-                const ratio = a.planned > 0 ? a.actual / a.planned : a.actual > 0 ? 1.01 : 0
-                const over = a.kind !== 'ahorro' && ratio > 1
-                return (
-                  <div key={a.account_id} className="list-row acc-row">
-                    <div className="row" style={{ minWidth: 0 }}>
-                      <span className="swatch" style={{ background: a.color }} />
+            {recent.length === 0 ? (
+              <div className="empty" style={{ padding: '22px 8px' }}>
+                <p className="muted">Aún no anotas nada este mes.</p>
+                <button className="btn dc-cta btn-sm" style={{ marginTop: 12 }} onClick={() => openAdd({ mode: 'gasto' })}><IconPlus size={14} /> Anotar el primero</button>
+              </div>
+            ) : (
+              <div className="list">
+                {recent.map((t) => {
+                  const plus = t.accounts?.kind === 'ingreso' || t.kind === 'retiro'
+                  return (
+                    <div key={t.id} className="list-row tx-mini">
+                      <span className="swatch" style={{ background: t.accounts?.color }} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{KINDS[a.kind].label}</div>
+                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.accounts?.is_free ? FREE_LABEL : t.accounts?.name}</div>
+                        <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{new Date(`${t.occurred_on}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'short' })}{t.description ? ` · ${t.description}` : ''}</div>
+                      </div>
+                      <b className="num" style={{ color: plus ? 'var(--ok)' : 'var(--text)' }}>{plus ? '+' : '−'}{m(t.amount)}</b>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h3 className="card-title">Por categoría</h3>
+              <Link to="/presupuesto" className="btn btn-ghost btn-sm">Ajustar <IconArrow className="arrow" size={14} /></Link>
+            </div>
+            {accountRows.length === 0 ? (
+              <p className="muted">Este mes no tiene categorías todavía.</p>
+            ) : (
+              <div className="list">
+                {accountRows.map((a) => {
+                  const ratio = a.planned > 0 ? a.actual / a.planned : a.actual > 0 ? 1.01 : 0
+                  const over = a.kind !== 'ahorro' && ratio > 1
+                  return (
+                    <div key={a.account_id} className="list-row cat-row">
+                      <div className="row" style={{ minWidth: 0, gap: 8 }}>
+                        <span className="swatch" style={{ background: a.color }} />
+                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                      </div>
+                      <span className="num" style={{ fontSize: 13, textAlign: 'right' }}>
+                        <b style={{ color: over ? 'var(--danger)' : 'var(--text)' }}>{m(a.actual)}</b>
+                        <span className="muted"> / {m(a.planned)}</span>
+                      </span>
+                      <div className={`progress ${over ? 'over' : a.kind === 'ahorro' ? 'ok' : ''}`}>
+                        <span style={{ width: `${Math.min(ratio * 100, 100)}%` }} />
                       </div>
                     </div>
-                    <div className={`progress ${over ? 'over' : a.kind === 'ahorro' ? 'ok' : ''}`}>
-                      <span style={{ width: `${Math.min(ratio * 100, 100)}%` }} />
-                    </div>
-                    <div className="num" style={{ textAlign: 'right', fontSize: 14 }}>
-                      <b style={{ color: over ? 'var(--danger)' : 'var(--text)' }}>{money(a.actual, currency)}</b>
-                      <span className="muted"> / {money(a.planned, currency)}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )}
+          </section>
         </div>
+
+        <details className="card charts">
+          <summary>
+            <span className="card-title">Gráficos del mes</span>
+            <span className="muted" style={{ fontSize: 13 }}>Presupuesto vs real e historial</span>
+          </summary>
+          <div className="grid grid-2" style={{ marginTop: 18 }}>
+            <div>
+              <div className="card-head">
+                <div>
+                  <h3 className="card-title" style={{ fontSize: 15 }}>Presupuesto vs real</h3>
+                  <p className="card-sub">Gris = presupuesto · color = real</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={kindData} barGap={2} barCategoryGap="30%" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={c.grid} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 12 }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 11 }} tickFormatter={compact} width={48} />
+                  <Tooltip cursor={{ fill: c.grid }} content={<ChartTooltip currency={currency} colorFor={(p) => (p.dataKey === 'plan' ? c.plan : c[p.payload.key])} />} />
+                  <Bar dataKey="plan" name="Presupuesto" fill={c.plan} radius={[4, 4, 0, 0]} maxBarSize={44} />
+                  <Bar dataKey="real" name="Real" radius={[4, 4, 0, 0]} maxBarSize={44}>
+                    {kindData.map((d) => <Cell key={d.key} fill={c[d.key]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div>
+              <div className="card-head">
+                <div>
+                  <h3 className="card-title" style={{ fontSize: 15 }}>Historial</h3>
+                  <p className="card-sub">Últimos {histData.length} {histData.length === 1 ? 'mes' : 'meses'}</p>
+                </div>
+                <div className="legend">
+                  <span className="legend-item"><span className="swatch" style={{ background: c.variable }} />Gastos</span>
+                  <span className="legend-item"><span className="swatch" style={{ background: c.ahorro }} />Ahorro</span>
+                  <span className="legend-item"><span className="swatch" style={{ background: c.renta, height: 2 }} />Ingresos</span>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={histData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={c.grid} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 12 }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fill: c.axis, fontSize: 11 }} tickFormatter={compact} width={48} />
+                  <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: c.axis, strokeDasharray: '3 3' }} />
+                  <Line type="monotone" dataKey="renta" name="Ingresos" stroke={c.renta} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                  <Line type="monotone" dataKey="gastado" name="Gastos" stroke={c.variable} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--bg)' }} activeDot={{ r: 5 }} />
+                  <Line type="monotone" dataKey="ahorrado" name="Ahorro" stroke={c.ahorro} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--bg)' }} activeDot={{ r: 5 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </details>
       </div>
     </>
   )

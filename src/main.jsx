@@ -9,7 +9,10 @@ import { supabaseConfigured } from './lib/supabase'
 import '@fontsource-variable/sora'
 import '@fontsource-variable/manrope'
 import '@fontsource-variable/jetbrains-mono'
+// Captura el aviso de instalación apenas carga la página (antes de cualquier pantalla)
+import './lib/install'
 import './styles/theme.css'
+import './styles/redesign.css'
 
 function SetupNeeded() {
   return (

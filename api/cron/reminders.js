@@ -118,13 +118,13 @@ function buildPayload(items, currency) {
   const when = (d) => (d === 0 ? 'hoy' : d === 1 ? 'mañana' : `en ${d} días`)
   if (items.length === 1) {
     const a = items[0]
-    return { title: `${a.name} vence ${when(a.diff)}`, body: `${fmt.format(a.amount)} pendiente. Toca para marcarlo como pagado.`, url: '/mes', tag: `due-${a.id}` }
+    return { title: `${a.name} vence ${when(a.diff)}`, body: `${fmt.format(a.amount)} pendiente. Toca para marcarlo como pagado.`, url: '/presupuesto', tag: `due-${a.id}` }
   }
   const total = items.reduce((s, a) => s + a.amount, 0)
   return {
     title: `${items.length} gastos fijos por vencer`,
     body: `${items.map((a) => `${a.name} (${when(a.diff)})`).join(', ')} · ${fmt.format(total)} en total`,
-    url: '/mes',
+    url: '/presupuesto',
     tag: 'due-many'
   }
 }

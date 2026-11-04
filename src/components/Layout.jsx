@@ -1,14 +1,14 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { IconCalendar, IconGear, IconHome, IconList, IconLogo, IconLogout, IconMoon, IconPiggy, IconPlus, IconSun, IconWallet } from './Icons'
+import { IconCalendar, IconGear, IconHome, IconList, IconLogo, IconLogout, IconMenu, IconMoon, IconPiggy, IconPlus, IconSun } from './Icons'
+import { QuickAddProvider, useQuickAdd } from './QuickAdd'
 
 const NAV = [
-  { to: '/', label: 'Dashboard', short: 'Inicio', icon: IconHome, end: true },
-  { to: '/mes', label: 'Mi mes', short: 'Mi mes', icon: IconCalendar },
-  { to: '/movimientos', label: 'Movimientos', short: 'Gastos', icon: IconList },
-  { to: '/ahorros', label: 'Ahorros', short: 'Ahorros', icon: IconPiggy },
-  { to: '/cuentas', label: 'Cuentas', short: 'Cuentas', icon: IconWallet }
+  { to: '/', label: 'Inicio', icon: IconHome, end: true },
+  { to: '/gastos', label: 'Gastos', icon: IconList },
+  { to: '/presupuesto', label: 'Presupuesto', icon: IconCalendar },
+  { to: '/ahorros', label: 'Ahorros', icon: IconPiggy }
 ]
 
 export function Logo() {
@@ -21,7 +21,16 @@ export function Logo() {
 }
 
 export default function Layout() {
+  return (
+    <QuickAddProvider>
+      <Shell />
+    </QuickAddProvider>
+  )
+}
+
+function Shell() {
   const { theme, toggleTheme, online, pending } = useApp()
+  const openAdd = useQuickAdd()
 
   return (
     <>
@@ -50,9 +59,9 @@ export default function Layout() {
             <button className="dc-icon-btn fa-hide-sm" onClick={() => supabase.auth.signOut()} aria-label="Cerrar sesión" title="Cerrar sesión">
               <IconLogout size={17} />
             </button>
-            <Link to="/movimientos?nuevo=1" className="btn btn-sm dc-cta">
-              <IconPlus size={16} /> <span className="fa-hide-sm">Registrar gasto</span>
-            </Link>
+            <button className="btn btn-sm dc-cta fa-hide-sm" onClick={() => openAdd({ mode: 'gasto' })}>
+              <IconPlus size={16} /> Anotar
+            </button>
           </div>
         </div>
       </header>
@@ -71,12 +80,13 @@ export default function Layout() {
       </main>
 
       <nav className="fa-tabbar" aria-label="Navegación móvil">
-        {NAV.map(({ to, short, icon: Icon, end }) => (
-          <NavLink key={to} to={to} end={end}>
-            <Icon size={20} />
-            {short}
-          </NavLink>
-        ))}
+        <NavLink to="/" end><IconHome size={20} />Inicio</NavLink>
+        <NavLink to="/gastos"><IconList size={20} />Gastos</NavLink>
+        <button className="tab-add" onClick={() => openAdd({ mode: 'gasto' })} aria-label="Anotar gasto o ingreso">
+          <span><IconPlus size={24} strokeWidth={2.4} /></span>
+        </button>
+        <NavLink to="/presupuesto"><IconCalendar size={20} />Presupuesto</NavLink>
+        <NavLink to="/mas"><IconMenu size={20} />Más</NavLink>
       </nav>
     </>
   )

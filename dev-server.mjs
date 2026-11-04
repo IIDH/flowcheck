@@ -1,5 +1,6 @@
 // Servidor de desarrollo local: levanta las funciones /api (mismo formato que
 // Vercel) en :3001 y Vite en :5173 con proxy a la API. Uso: npm run dev
+// Puertos alternativos: API_PORT=3011 PORT=5330 npm run dev
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -8,7 +9,7 @@ import { createServer as createVite } from 'vite'
 
 for (const f of ['.env.local', '.env']) if (fs.existsSync(f)) process.loadEnvFile(f)
 
-const API_PORT = 3001
+const API_PORT = Number(process.env.API_PORT) || 3001
 const apiDir = path.resolve('api')
 
 const api = http.createServer(async (req, res) => {
@@ -39,6 +40,6 @@ const api = http.createServer(async (req, res) => {
 
 api.listen(API_PORT, () => console.log(`  API     http://localhost:${API_PORT}/api`))
 
-const vite = await createVite({ server: { port: 5173 } })
+const vite = await createVite({ server: { port: Number(process.env.PORT) || 5173, strictPort: true, proxy: { '/api': `http://localhost:${API_PORT}` } } })
 await vite.listen()
 vite.printUrls()
