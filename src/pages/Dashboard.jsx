@@ -147,7 +147,8 @@ export default function Dashboard() {
 
   const pendingFixed = f.fijo.list.filter((a) => a.actual < a.planned)
   const shownAlerts = alerts.filter((a) => !['pending_fixed', 'withdrawn'].includes(a.type))
-  const accountRows = accounts.filter((a) => a.kind !== 'ingreso' && !a.is_free)
+  // Sin monto ni gasto (p. ej. un ahorro cerrado que solo tuvo un retiro) no aporta nada a la lista
+  const accountRows = accounts.filter((a) => a.kind !== 'ingreso' && !a.is_free && (a.planned > 0 || a.actual > 0))
 
   const kindData = ['fijo', 'variable', 'ahorro'].map((key) => ({ key, label: KINDS[key].plural, plan: byKind[key].planned, real: byKind[key].actual }))
   const histData = history.map((h) => ({ ...h, label: periodShort(h) }))
