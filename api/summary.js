@@ -152,11 +152,12 @@ export default async function handler(req, res) {
   }
 
   // Saldo acumulado de los ahorros (saldo inicial + aportes de todos los meses).
+  // Un ahorro archivado con saldo sigue contando: esa plata no desapareció.
   // Si la migración 0003 aún no se ejecutó, simplemente no se incluye.
   let savings = null
-  const bal = await sb.from('account_balances').select('*').eq('archived', false)
+  const bal = await sb.from('account_balances').select('*')
   if (!bal.error) {
-    const list = bal.data.map((b) => ({ ...b, opening_balance: Number(b.opening_balance), contributed: Number(b.contributed), balance: Number(b.balance), withdrawn: Number(b.withdrawn ?? 0) }))
+    const list = bal.data.filter((b) => !b.archived || Number(b.balance) !== 0).map((b) => ({ ...b, opening_balance: Number(b.opening_balance), contributed: Number(b.contributed), balance: Number(b.balance), withdrawn: Number(b.withdrawn ?? 0) }))
     savings = { total: round(list.reduce((t, b) => t + b.balance, 0)), accounts: list.sort((x, y) => y.balance - x.balance) }
   }
 

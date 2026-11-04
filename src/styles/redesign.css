@@ -160,3 +160,13 @@ details.archived summary { cursor: pointer; font-size: 13px; }
 .install-card { width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .install-card .install-text { margin-bottom: 4px; }
 .ios-share { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); font-size: 11px; }
+
+/* ---------- elegir una opción (archivar ahorro) */
+.choice { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; color: var(--text); transition: border-color 0.2s, background 0.2s; }
+.choice:hover:not(:disabled) { border-color: color-mix(in oklab, var(--primary) 50%, var(--line)); }
+.choice.on { border-color: var(--primary); background: var(--primary-soft); }
+.choice:disabled { opacity: 0.55; cursor: not-allowed; }
+.choice b { display: block; font-size: 15px; }
+.choice small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 3px; }
+.choice-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); flex: none; margin-top: 2px; }
+.choice.on .choice-dot { border-color: var(--primary); box-shadow: inset 0 0 0 4px var(--bg); background: var(--primary); }

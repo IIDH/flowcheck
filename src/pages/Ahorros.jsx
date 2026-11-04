@@ -18,7 +18,7 @@ export default function Ahorros() {
 
   const load = useCallback(async () => {
     const [b, h] = await Promise.all([
-      supabase.from('account_balances').select('*').eq('archived', false).order('name'),
+      supabase.from('account_balances').select('*').order('name'),
       supabase
         .from('transactions')
         .select('id, amount, kind, occurred_on, description, account_id, accounts!inner(name, color, kind)')
@@ -32,7 +32,8 @@ export default function Ahorros() {
       return
     }
     setError(null)
-    setBalances(b.data.map((x) => ({ ...x, balance: Number(x.balance), opening_balance: Number(x.opening_balance), contributed: Number(x.contributed), withdrawn: Number(x.withdrawn ?? 0) })))
+    // Los archivados con saldo se siguen mostrando: esa plata no desapareció
+    setBalances(b.data.filter((x) => !x.archived || Number(x.balance) !== 0).map((x) => ({ ...x, balance: Number(x.balance), opening_balance: Number(x.opening_balance), contributed: Number(x.contributed), withdrawn: Number(x.withdrawn ?? 0) })))
     setHistory(h.data)
   }, [])
   useEffect(() => { load() }, [load])
@@ -81,7 +82,7 @@ export default function Ahorros() {
             <div className="grid grid-3">
               {balances.map((b) => (
                 <div key={b.account_id} className="card-soft">
-                  <div className="row"><span className="swatch" style={{ background: b.color }} /><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</b></div>
+                  <div className="row"><span className="swatch" style={{ background: b.color }} /><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</b>{b.archived && <span className="badge" style={{ whiteSpace: 'nowrap', flex: 'none', marginLeft: 'auto' }} title="Ya no está en tu presupuesto mensual">Sin aportes</span>}</div>
                   <div className="num" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 24, marginTop: 10, color: b.balance < 0 ? 'var(--danger)' : 'var(--text)' }}>{money(b.balance, currency)}</div>
                   <div className="muted num" style={{ fontSize: 12, marginTop: 4 }}>
                     {money(b.opening_balance, currency)} inicial · +{money(b.contributed, currency)}{b.withdrawn > 0 ? ` · −${money(b.withdrawn, currency)}` : ''}

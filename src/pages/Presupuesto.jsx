@@ -145,6 +145,60 @@ function CategoryDialog({ account, actual, onClose, onSaved, onArchive }) {
   )
 }
 
+/** Archivar un ahorro con saldo: ¿se guarda la plata o se saca para usarla este mes? */
+function ArchiveSavingsDialog({ account, balance, withdrawBlocked, onClose, onChoose }) {
+  const { currency } = useApp()
+  const [choice, setChoice] = useState('keep')
+  const [busy, setBusy] = useState(false)
+  const m = (v) => money(v, currency)
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop confirm-backdrop" onClick={onClose}>
+      <div className="modal card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="as-title">
+        <h3 id="as-title" className="card-title">¿Dejas de usar "{account.name}"?</h3>
+        <p className="confirm-msg">Este ahorro tiene <b>{m(balance)}</b> juntados. ¿Qué hacemos con esa plata?</p>
+        <div className="stack" style={{ gap: 10, marginTop: 16 }}>
+          <button type="button" className={`choice ${choice === 'keep' ? 'on' : ''}`} onClick={() => setChoice('keep')} aria-pressed={choice === 'keep'}>
+            <span className="choice-dot" />
+            <span>
+              <b>Guardarla</b>
+              <small>Dejamos de pedirte un aporte cada mes, pero los {m(balance)} siguen contando en tus ahorros. Los puedes sacar cuando quieras desde Ahorros.</small>
+            </span>
+          </button>
+          <button type="button" className={`choice ${choice === 'withdraw' ? 'on' : ''}`} onClick={() => !withdrawBlocked && setChoice('withdraw')} aria-pressed={choice === 'withdraw'} disabled={Boolean(withdrawBlocked)}>
+            <span className="choice-dot" />
+            <span>
+              <b>Sacarla y usarla este mes</b>
+              <small>{withdrawBlocked || <>Se anota un retiro de {m(balance)}: se suma a lo que te queda para gastar y este ahorro queda en $0.</>}</small>
+            </span>
+          </button>
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 20 }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button
+            type="button"
+            className="btn dc-cta"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              await onChoose(choice)
+              setBusy(false)
+            }}
+          >
+            {busy ? 'Guardando…' : choice === 'keep' ? 'Guardar y dejar de usar' : `Sacar ${m(balance)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Fila para agregar una categoría nueva al final de un grupo. */
 function AddCategory({ kind, onAdd, disabled }) {
   const [open, setOpen] = useState(false)
@@ -188,6 +242,7 @@ export default function Presupuesto() {
   const [incomes, setIncomes] = useState([])
   const [editing, setEditing] = useState(null)
   const [closing, setClosing] = useState(false)
+  const [archiving, setArchiving] = useState(null)
   const m = (v) => money(v, currency)
 
   const loadIncomes = useCallback(async () => {
@@ -265,7 +320,23 @@ export default function Presupuesto() {
     return run(() => supabase.from('budget_items').upsert({ month_id: month.id, account_id: created.data.id, planned: amount }, { onConflict: 'month_id,account_id' }), `${name} agregada`)
   }
 
+  async function doArchive(acc, actual, message) {
+    const { error } = await supabase.from('accounts').update({ archived: true }).eq('id', acc.id)
+    if (error) return notify(friendlyError(error), 'error')
+    if (!actual) await supabase.from('budget_items').delete().eq('month_id', month.id).eq('account_id', acc.id)
+    setEditing(null)
+    setArchiving(null)
+    notify(message ?? `${acc.name} quitada`)
+    refresh()
+  }
+
   async function archive(acc, actual) {
+    // Un ahorro con plata juntada: preguntar qué hacer con el saldo
+    if (acc.kind === 'ahorro') {
+      const { data } = await supabase.from('account_balances').select('balance').eq('account_id', acc.id).maybeSingle()
+      const balance = Number(data?.balance ?? 0)
+      if (balance > 0) return setArchiving({ account: acc, actual, balance })
+    }
     const ok = await confirm({
       tone: 'warn',
       title: actual > 0 ? `¿Dejar de usar "${acc.name}"?` : `¿Quitar "${acc.name}"?`,
@@ -273,12 +344,22 @@ export default function Presupuesto() {
       confirmText: actual > 0 ? 'Dejar de usar' : 'Quitar'
     })
     if (!ok) return
-    const { error } = await supabase.from('accounts').update({ archived: true }).eq('id', acc.id)
+    doArchive(acc, actual)
+  }
+
+  async function archiveSavings(choice) {
+    const { account: acc, actual, balance } = archiving
+    if (choice === 'keep') return doArchive(acc, actual, `${acc.name} ya no está en tu presupuesto. Sus ${m(balance)} siguen en tus ahorros.`)
+    const { error } = await supabase.from('transactions').insert({
+      month_id: month.id,
+      account_id: acc.id,
+      amount: balance,
+      occurred_on: dateInPeriod(period),
+      kind: 'retiro',
+      description: `Cerré el ahorro "${acc.name}" y pasé la plata al mes`
+    })
     if (error) return notify(friendlyError(error), 'error')
-    if (!actual) await supabase.from('budget_items').delete().eq('month_id', month.id).eq('account_id', acc.id)
-    setEditing(null)
-    notify(`${acc.name} quitada`)
-    refresh()
+    return doArchive(acc, actual, `Sacaste ${m(balance)} de ${acc.name}: ya se suman a lo que te queda este mes.`)
   }
 
   async function restore(acc) {
@@ -492,6 +573,21 @@ export default function Presupuesto() {
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refresh() }}
           onArchive={() => archive(editing.account, editing.actual)}
+        />
+      )}
+      {archiving && (
+        <ArchiveSavingsDialog
+          account={archiving.account}
+          balance={archiving.balance}
+          withdrawBlocked={
+            closed
+              ? 'Este mes está cerrado. Reábrelo para poder sacar la plata, o elige guardarla.'
+              : `${period.year}-${String(period.month).padStart(2, '0')}` > todayISO().slice(0, 7)
+                ? 'Para sacar la plata ve al mes actual: no se puede anotar un retiro en un mes que aún no llega.'
+                : null
+          }
+          onClose={() => setArchiving(null)}
+          onChoose={archiveSavings}
         />
       )}
       {closing && (
