@@ -20,13 +20,12 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        // Android pinta las barras del sistema de la app instalada con estos colores
-        // (fijados al instalar; la página no los puede cambiar después). Se usan los
-        // fondos de la app, no el azul de marca, para que la barra se vea integrada.
-        background_color: '#ffffff',
-        theme_color: '#ffffff',
-        // Si el teléfono está en modo oscuro (navegadores que lo soportan)
-        color_scheme_dark: { background_color: '#0a0a0c', theme_color: '#0a0a0c' },
+        // Android pinta la barra de navegación de la app instalada con estos colores,
+        // fijados al instalar: la página no los puede cambiar después y Chrome/Brave aún
+        // ignoran color_scheme_dark. Se usa el fondo oscuro de la app como base porque una
+        // barra blanca sobre el modo oscuro encandila; en modo claro queda una barra oscura.
+        background_color: '#0a0a0c',
+        theme_color: '#0a0a0c',
         icons: [
           { src: '/pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },
