@@ -142,6 +142,9 @@ export default function Dashboard() {
   const { kpis: k, byKind, accounts, history, alerts, savings } = data
   const f = monthFigures({ income: k.renta, carryIn: k.carryIn, rows: accounts })
   const days = daysLeftIn(period)
+  // Plata real al día de hoy y lo que aún está comprometido (fijos por pagar y meta de ahorro)
+  const cash = f.totalIncome - f.spent - f.saved
+  const reserved = f.fijo.left + f.ahorro.left
   const m = (v) => money(v, currency)
 
   const pendingFixed = f.fijo.list.filter((a) => a.actual < a.planned)
@@ -167,7 +170,7 @@ export default function Dashboard() {
               {f.canSpend >= 0 ? (
                 <>
                   {f.variable.left > 0 && <><b>{m(f.variable.left)}</b> en tus gastos variables · </>}
-                  <b>{m(Math.max(f.free, 0))}</b> libres
+                  <b>{m(Math.max(f.free, 0))}</b> de plata libre
                   {f.free < 0 && <span style={{ color: 'var(--danger)' }}> (te pasaste {m(-f.free)} de lo libre)</span>}
                 </>
               ) : (
@@ -175,26 +178,30 @@ export default function Dashboard() {
               )}
             </p>
             {days && f.canSpend > 0 && <p className="hero-day num">≈ {m(f.canSpend / days)} por día · quedan {days} {days === 1 ? 'día' : 'días'}</p>}
-            <p className="hero-note">Ya descontamos lo que falta pagar de tus gastos fijos y tu meta de ahorro.</p>
+            <p className="hero-note num">
+              {reserved > 0
+                ? <>Tienes hoy {m(cash)} − {m(reserved)} reservados para {[f.fijo.left > 0 && 'fijos por pagar', f.ahorro.left > 0 && 'tu meta de ahorro'].filter(Boolean).join(' y ')}.</>
+                : <>Ya pagaste tus fijos y tu ahorro del mes: todo lo que tienes hoy es para gastar.</>}
+            </p>
             <div className="row hero-actions">
               <button className="btn dc-cta" onClick={() => openAdd({ mode: 'gasto' })}><IconPlus size={16} /> Anotar gasto</button>
               <button className="btn btn-ghost" onClick={() => openAdd({ mode: 'ingreso' })}><IconPlus size={16} /> Ingreso</button>
             </div>
           </section>
 
-          <section className="card">
-            <div className="card-head" style={{ marginBottom: 8 }}>
-              <h3 className="card-title">Plata del mes</h3>
-              <b className="num" style={{ fontFamily: 'var(--font-display)', fontSize: 22 }}>{m(f.totalIncome)}</b>
-            </div>
-            <div className="list income-list">
-              <div className="list-row"><span>Sueldo</span><b className="num">{m(f.salary)}</b></div>
-              <div className="list-row">
-                <span>Otros ingresos <span className="muted">· abonos, transferencias</span></span>
-                <b className="num" style={{ color: f.extra > 0 ? 'var(--ok)' : 'var(--muted)' }}>{f.extra > 0 ? '+' : ''}{m(f.extra)}</b>
-              </div>
-              {f.carryIn !== 0 && <div className="list-row"><span>Del mes anterior</span><b className="num" style={{ color: f.carryIn < 0 ? 'var(--danger)' : 'var(--ok)' }}>{f.carryIn > 0 ? '+' : '−'}{m(Math.abs(f.carryIn))}</b></div>}
-              {f.withdrawn > 0 && <div className="list-row"><span>Sacado de ahorros</span><b className="num" style={{ color: 'var(--ok)' }}>+{m(f.withdrawn)}</b></div>}
+          <section className="card statement">
+            <h3 className="card-title">Resumen del mes</h3>
+            <p className="card-sub" style={{ marginBottom: 10 }}>Lo que entró menos lo que ya salió, al día de hoy.</p>
+            <div className="st-rows num">
+              <div><span>Sueldo</span><b>{m(f.salary)}</b></div>
+              <div><span>Otros ingresos <small>abonos, transferencias</small></span><b className={f.extra > 0 ? 'pos' : 'zero'}>+{m(f.extra)}</b></div>
+              {f.carryIn !== 0 && <div><span>Del mes anterior</span><b className={f.carryIn > 0 ? 'pos' : 'neg'}>{f.carryIn > 0 ? '+' : '−'}{m(Math.abs(f.carryIn))}</b></div>}
+              {f.withdrawn > 0 && <div><span>Sacado de ahorros</span><b className="pos">+{m(f.withdrawn)}</b></div>}
+              <div className="st-sub"><span>Plata del mes</span><b>{m(f.totalIncome)}</b></div>
+              <div><span>Gastos fijos pagados</span><b className={f.fijo.actual ? 'neg' : 'zero'}>−{m(f.fijo.actual)}</b></div>
+              <div><span>Gastos variables</span><b className={f.variable.actual + f.freeSpent ? 'neg' : 'zero'}>−{m(f.variable.actual + f.freeSpent)}</b></div>
+              <div><span>Ahorro apartado</span><b className={f.saved ? 'neg' : 'zero'}>−{m(f.saved)}</b></div>
+              <div className="st-total"><span>Tienes hoy</span><b className={cash < 0 ? 'neg' : ''}>{m(cash)}</b></div>
             </div>
             <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 14 }} onClick={() => openAdd({ mode: 'ingreso' })}>
               <IconPlus size={14} /> Me llegó un abono o transferencia

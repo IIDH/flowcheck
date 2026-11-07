@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { openMonth, todayISO } from '../lib/api'
 import { ensureFreeAccount, FREE_COLOR, FREE_LABEL, FREE_NAME } from '../lib/freeBalance'
+import { monthFigures } from '../lib/figures'
 import { friendlyError, money, parseAmount } from '../lib/format'
 import { enqueue, isNetworkError } from '../lib/offline'
 import { supabase } from '../lib/supabase'
@@ -54,6 +55,8 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
   const [added, setAdded] = useState([])
   const amountRef = useRef(null)
   const scrollRef = useRef(null)
+  // Cifras del mes para mostrar cuánto queda en cada categoría y en la plata libre
+  const [fig, setFig] = useState(null)
 
   const first = `${period.year}-${pad(period.month)}-01`
   const last = `${period.year}-${pad(period.month)}-${pad(new Date(period.year, period.month, 0).getDate())}`
@@ -80,6 +83,27 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
       })
   }, [])
 
+  const loadFigures = useCallback(async () => {
+    const m = await supabase.from('months').select('*').eq('year', period.year).eq('month', period.month).maybeSingle()
+    if (!m.data) return setFig(null)
+    const [r, prev] = await Promise.all([
+      supabase.from('month_account_summary').select('*').eq('month_id', m.data.id),
+      supabase
+        .from('months')
+        .select('*')
+        .or(`year.lt.${period.year},and(year.eq.${period.year},month.lt.${period.month})`)
+        .order('year', { ascending: false })
+        .order('month', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ])
+    const rows = (r.data ?? []).map((x) => ({ ...x, planned: Number(x.planned), actual: Number(x.actual), withdrawn: Number(x.withdrawn ?? 0) }))
+    const left = Object.fromEntries(rows.map((x) => [x.account_id, x.planned - x.actual]))
+    const carryIn = prev.data?.closed ? Number(prev.data.carry_out ?? 0) : 0
+    setFig({ ...monthFigures({ income: m.data.income, carryIn, rows }), left })
+  }, [period.year, period.month])
+  useEffect(() => { loadFigures() }, [loadFigures])
+
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -100,7 +124,7 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
       return [
         ...list.filter((a) => a.kind === 'variable').sort(byUse),
         ...list.filter((a) => a.kind === 'fijo').sort(byUse),
-        { id: FREE, name: FREE_LABEL, color: FREE_COLOR, hint: 'No entra en ninguna categoría' }
+        { id: FREE, name: FREE_LABEL, kind: 'free', color: FREE_COLOR, hint: 'Lo que no asignaste a ninguna categoría' }
       ]
     }
     if (mode === 'ingreso') {
@@ -126,6 +150,27 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
   useEffect(() => {
     if (!isTouch()) amountRef.current?.focus()
   }, [mode])
+
+  // Qué le pasa a "Te quedan para gastar" con lo elegido
+  function pickHint() {
+    const value = parseAmount(amount)
+    if (accountId === FREE) {
+      if (!fig) return 'Sale de tu plata libre: lo que no asignaste a ninguna categoría.'
+      const after = fig.free - value
+      return after >= 0 ? `Sale de tu plata libre. Te quedarían ${money(after, currency)} libres.` : `Sale de tu plata libre y te pasas por ${money(-after, currency)}.`
+    }
+    const acc = accounts?.find((a) => a.id === accountId)
+    if (!acc) return ''
+    const left = fig?.left?.[acc.id]
+    if (acc.kind === 'fijo') {
+      return left != null && value > left
+        ? `Gasto fijo: ya estaba reservado, pero te pasas por ${money(value - Math.max(left, 0), currency)} y eso sí baja lo que te queda.`
+        : 'Gasto fijo: ya estaba reservado en tu presupuesto, así que no cambia lo que te queda para gastar.'
+    }
+    if (left == null) return 'Baja lo que te queda para gastar.'
+    const after = left - value
+    return after >= 0 ? `Baja lo que te queda para gastar. En ${acc.name} te quedarían ${money(after, currency)}.` : `Baja lo que te queda para gastar y te pasas por ${money(-after, currency)} en ${acc.name}.`
+  }
 
   const hasCategories = (accounts ?? []).some((a) => !a.is_free && a.kind !== 'ingreso')
 
@@ -169,7 +214,8 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
       }
       window.dispatchEvent(new CustomEvent('fa-synced'))
       // La hoja queda abierta para el siguiente: la franja verde confirma y "Listo" la cierra
-      setAdded((list) => [...list, { id: row.id, name: accountId === FREE ? FREE_LABEL : acc.name, amount: value, plus: mode === 'ingreso' }])
+      setAdded((list) => [...list, { id: row.id, name: accountId === FREE ? FREE_LABEL : acc.name, amount: value, plus: mode === 'ingreso', fixed: acc.kind === 'fijo' }])
+      loadFigures()
       setAmount('')
       setDescription('')
       setSearch('')
@@ -207,7 +253,7 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
               <IconCheck size={14} />
               <span>
                 {added.length === 1 ? '1 anotado' : `${added.length} anotados`} · {money(addedTotal, currency)}
-                <small>Último: {added.at(-1).name} {added.at(-1).plus ? '+' : ''}{money(added.at(-1).amount, currency)}</small>
+                <small>Último: {added.at(-1).name} {added.at(-1).plus ? '+' : ''}{money(added.at(-1).amount, currency)}{added.at(-1).fixed ? ' · gasto fijo, ya estaba reservado' : ''}</small>
               </span>
             </div>
           )}
@@ -250,15 +296,33 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
                 ) : options.length === 0 ? (
                   <p className="muted" style={{ fontSize: 13 }}>No tienes categorías de ahorro. Créala en <Link to="/presupuesto" onClick={onClose} className="legal-link">Presupuesto</Link>.</p>
                 ) : (
-                  <div className="cat-chips">
-                    {shown.map((o) => (
-                      <button type="button" key={o.id} className={`cat-chip ${accountId === o.id ? 'on' : ''}`} onClick={() => setAccountId(o.id)} title={o.hint}>
-                        <span className="swatch" style={{ background: o.color }} />
-                        {o.name}
-                      </button>
-                    ))}
+                  <>
+                    {(mode === 'gasto' && !search.trim()
+                      ? [
+                          { key: 'variable', title: 'Variables · bajan lo que te queda', items: shown.filter((o) => o.kind === 'variable') },
+                          { key: 'fijo', title: 'Fijos · ya están reservados', items: shown.filter((o) => o.kind === 'fijo') },
+                          { key: 'free', title: 'Sin categoría', items: shown.filter((o) => o.kind === 'free') }
+                        ]
+                      : [{ key: 'all', items: shown }]
+                    )
+                      .filter((g) => g.items.length)
+                      .map((g) => (
+                        <div key={g.key} className="chip-group">
+                          {g.title && <span className="chip-group-title">{g.title}</span>}
+                          <div className="cat-chips">
+                            {g.items.map((o) => (
+                              <button type="button" key={o.id} className={`cat-chip ${accountId === o.id ? 'on' : ''} ${o.kind === 'free' ? 'free' : ''}`} onClick={() => setAccountId(o.id)} title={o.hint}>
+                                <span className="swatch" style={{ background: o.color }} />
+                                {o.name}
+                                {o.kind === 'free' && fig && <small className="num">quedan {money(Math.max(fig.free, 0), currency)}</small>}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     {shown.length === 0 && <span className="muted" style={{ fontSize: 13 }}>Ninguna categoría coincide.</span>}
-                  </div>
+                    {mode === 'gasto' && accountId && <p className="pick-hint">{pickHint()}</p>}
+                  </>
                 )}
                 {mode === 'ingreso' && <span className="muted" style={{ fontSize: 12 }}>Se suma a tu sueldo y aumenta lo que te queda para gastar este mes.</span>}
               </div>

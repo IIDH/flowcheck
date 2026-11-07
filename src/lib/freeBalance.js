@@ -20,4 +20,4 @@ export async function ensureFreeAccount(accounts) {
 }
 
 /** Nombre visible de la cuenta de sistema "Saldo libre". */
-export const FREE_LABEL = 'Sin categoría'
+export const FREE_LABEL = 'Plata libre'

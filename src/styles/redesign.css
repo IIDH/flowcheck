@@ -168,3 +168,27 @@ details.archived summary { cursor: pointer; font-size: 13px; }
 .choice.on .choice-dot { border-color: var(--primary); box-shadow: inset 0 0 0 4px var(--bg); background: var(--primary); }
 
 .sheet-done { background: var(--ok); box-shadow: none; padding: 0 16px; animation: dcRise 0.3s both; }
+
+/* ---------- grupos de categorías en la hoja "+" */
+.chip-group { display: flex; flex-direction: column; gap: 6px; }
+.chip-group + .chip-group { margin-top: 8px; }
+.chip-group-title { font-size: 11px; font-weight: 600; color: var(--muted); }
+.cat-chip small { font-size: 11px; font-weight: 600; color: var(--muted); }
+.cat-chip.on small { color: inherit; opacity: 0.75; }
+.cat-chip.free { border-style: dashed; }
+.pick-hint { font-size: 12px; line-height: 1.45; color: var(--muted); margin: 4px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+
+/* ---------- resumen del mes (estado de cuenta) */
+.st-rows { display: flex; flex-direction: column; }
+.st-rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; font-size: 14px; }
+.st-rows span { color: var(--muted); min-width: 0; }
+.st-rows small { display: block; font-size: 11px; opacity: 0.8; }
+.st-rows b { white-space: nowrap; font-weight: 700; }
+.st-rows b.pos { color: var(--ok); }
+.st-rows b.neg { color: var(--text); }
+.st-rows b.zero { color: var(--muted); font-weight: 500; }
+.st-rows .st-sub { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 10px; }
+.st-rows .st-sub span, .st-rows .st-total span { color: var(--text); font-weight: 700; }
+.st-rows .st-total { border-top: 2px solid var(--line); margin-top: 6px; padding-top: 12px; }
+.st-rows .st-total b { font-family: var(--font-display); font-size: 22px; }
+.st-rows .st-total b.neg { color: var(--danger); }
