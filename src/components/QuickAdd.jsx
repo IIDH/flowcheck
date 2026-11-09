@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { openMonth, todayISO } from '../lib/api'
 import { ensureFreeAccount, FREE_COLOR, FREE_LABEL, FREE_NAME } from '../lib/freeBalance'
+import { applyMove } from '../lib/budgetMoves'
 import { monthFigures } from '../lib/figures'
 import { friendlyError, money, parseAmount } from '../lib/format'
 import { enqueue, isNetworkError } from '../lib/offline'
@@ -42,12 +43,12 @@ export function QuickAddProvider({ children }) {
   )
 }
 
-function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }) {
+function QuickAddSheet({ mode: initialMode, accountId: initialAccount, amount: initialAmount, onClose }) {
   const { period, currency, notify } = useApp()
   const [mode, setMode] = useState(initialMode)
   const [accounts, setAccounts] = useState(null)
   const [accountId, setAccountId] = useState(initialAccount ?? '')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(initialAmount > 0 ? typing(String(initialAmount).replace('.', ',')) : '')
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [usage, setUsage] = useState({})
@@ -57,6 +58,10 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
   const scrollRef = useRef(null)
   // Cifras del mes para mostrar cuánto queda en cada categoría y en la plata libre
   const [fig, setFig] = useState(null)
+  // Gasto fijo distinto a lo presupuestado: de dónde sale lo que te pasaste / adónde va lo que sobró
+  const [cover, setCover] = useState(FREE)
+  const [settled, setSettled] = useState(false)
+  const [spare, setSpare] = useState(FREE)
 
   const first = `${period.year}-${pad(period.month)}-01`
   const last = `${period.year}-${pad(period.month)}-${pad(new Date(period.year, period.month, 0).getDate())}`
@@ -100,7 +105,7 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
     const rows = (r.data ?? []).map((x) => ({ ...x, planned: Number(x.planned), actual: Number(x.actual), withdrawn: Number(x.withdrawn ?? 0) }))
     const left = Object.fromEntries(rows.map((x) => [x.account_id, x.planned - x.actual]))
     const carryIn = prev.data?.closed ? Number(prev.data.carry_out ?? 0) : 0
-    setFig({ ...monthFigures({ income: m.data.income, carryIn, rows }), left })
+    setFig({ ...monthFigures({ income: m.data.income, carryIn, rows }), left, rows, monthId: m.data.id })
   }, [period.year, period.month])
   useEffect(() => { loadFigures() }, [loadFigures])
 
@@ -172,6 +177,33 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
     return after >= 0 ? `Baja lo que te queda para gastar. En ${acc.name} te quedarían ${money(after, currency)}.` : `Baja lo que te queda para gastar y te pasas por ${money(-after, currency)} en ${acc.name}.`
   }
 
+  const m = (v) => money(v, currency)
+  const picked = mode === 'gasto' ? accounts?.find((a) => a.id === accountId) : null
+  const value = parseAmount(amount)
+  const fixedLeft = picked?.kind === 'fijo' && fig?.left?.[picked.id] != null ? fig.left[picked.id] : null
+  // Te pasas: lo que excede lo que faltaba pagar. Sobra: pagaste menos de lo que faltaba.
+  const overBy = fixedLeft != null && value > 0 ? Math.max(value - Math.max(fixedLeft, 0), 0) : 0
+  const spareBy = fixedLeft != null && value > 0 && value < fixedLeft ? fixedLeft - value : 0
+  const otherCats = (fig?.rows ?? [])
+    .filter((r) => r.account_id !== picked?.id && !r.is_free && ['fijo', 'variable', 'ahorro'].includes(r.kind))
+    .map((r) => ({ ...r, left: r.planned - r.actual }))
+  const coverOptions = otherCats.filter((r) => r.left >= overBy && r.left > 0)
+  const catName = (id) => (id === FREE ? FREE_LABEL : otherCats.find((r) => r.account_id === id)?.name ?? '')
+  useEffect(() => {
+    setCover(FREE)
+    setSettled(false)
+    setSpare(FREE)
+  }, [accountId])
+
+  const chip = (id, name, color, sub, on, pick) => (
+    <button type="button" key={id} className={`cat-chip ${on ? 'on' : ''} ${id === FREE ? 'free' : ''}`} onClick={() => pick(id)}>
+      <span className="swatch" style={{ background: color }} />
+      {name}
+      {sub && <small className="num">{sub}</small>}
+    </button>
+  )
+  const KIND_WORD = { fijo: 'fijo', variable: 'variable', ahorro: 'ahorro' }
+
   const hasCategories = (accounts ?? []).some((a) => !a.is_free && a.kind !== 'ingreso')
 
   async function resolveMonth(iso) {
@@ -207,14 +239,39 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
       const acc = await resolveAccount()
       const row = { id: crypto.randomUUID(), month_id: month.id, account_id: acc.id, amount: value, occurred_on: date, description: description.trim() || null }
       const { error } = await supabase.from('transactions').insert(row)
+      const queued = !!error
       if (error) {
         if (!isNetworkError(error)) throw error
         enqueue({ ...row, accounts: { name: acc.name, kind: acc.kind, color: acc.color } })
         notify('Sin conexión: quedó guardado en el teléfono y se sincroniza al volver la red')
       }
+      // Mueve el presupuesto del mes según lo que respondió (solo este mes)
+      let note = acc.kind === 'fijo' ? ' · gasto fijo, ya estaba reservado' : ''
+      if (fig && fig.monthId === month.id && (overBy > 0 || (spareBy > 0 && settled))) {
+        const plan = Object.fromEntries(fig.rows.map((r) => [r.account_id, r.planned]))
+        const over = overBy > 0
+        const other = over ? cover : spare
+        const moved = await applyMove({
+          plan,
+          month_id: month.id,
+          transaction_id: queued ? null : row.id,
+          account_id: acc.id,
+          other_account_id: other === FREE ? null : other,
+          reason: over ? 'exceso' : 'sobrante',
+          amount: over ? overBy : spareBy,
+          occurred_on: date
+        })
+        note = over ? ` · ${m(overBy)} extra salió de ${catName(other)}` : ` · sobraron ${m(spareBy)}, pasaron a ${catName(other)}`
+        if (moved.error) {
+          note = ''
+          notify(`El gasto quedó anotado, pero no se pudo mover el presupuesto: ${friendlyError(moved.error)}`, 'error')
+        } else if (moved.logError) {
+          notify('Presupuesto ajustado. Falta activar el historial de ajustes en la base (migración 0008).', 'error')
+        }
+      }
       window.dispatchEvent(new CustomEvent('fa-synced'))
       // La hoja queda abierta para el siguiente: la franja verde confirma y "Listo" la cierra
-      setAdded((list) => [...list, { id: row.id, name: accountId === FREE ? FREE_LABEL : acc.name, amount: value, plus: mode === 'ingreso', fixed: acc.kind === 'fijo' }])
+      setAdded((list) => [...list, { id: row.id, name: accountId === FREE ? FREE_LABEL : acc.name, amount: value, plus: mode === 'ingreso', note }])
       loadFigures()
       setAmount('')
       setDescription('')
@@ -253,7 +310,7 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
               <IconCheck size={14} />
               <span>
                 {added.length === 1 ? '1 anotado' : `${added.length} anotados`} · {money(addedTotal, currency)}
-                <small>Último: {added.at(-1).name} {added.at(-1).plus ? '+' : ''}{money(added.at(-1).amount, currency)}{added.at(-1).fixed ? ' · gasto fijo, ya estaba reservado' : ''}</small>
+                <small>Último: {added.at(-1).name} {added.at(-1).plus ? '+' : ''}{money(added.at(-1).amount, currency)}{added.at(-1).note}</small>
               </span>
             </div>
           )}
@@ -321,7 +378,49 @@ function QuickAddSheet({ mode: initialMode, accountId: initialAccount, onClose }
                         </div>
                       ))}
                     {shown.length === 0 && <span className="muted" style={{ fontSize: 13 }}>Ninguna categoría coincide.</span>}
-                    {mode === 'gasto' && accountId && <p className="pick-hint">{pickHint()}</p>}
+                    {mode === 'gasto' && accountId && !overBy && !spareBy && <p className="pick-hint">{pickHint()}</p>}
+                    {overBy > 0 && (
+                      <div className="follow-up">
+                        <p className="follow-q">Te pasas por <b className="num">{m(overBy)}</b> en {picked.name}. ¿De dónde sacas esa diferencia?</p>
+                        <div className="cat-chips">
+                          {chip(FREE, FREE_LABEL, FREE_COLOR, fig && `quedan ${m(Math.max(fig.free, 0))}`, cover === FREE, setCover)}
+                          {coverOptions.map((r) => chip(r.account_id, r.name, r.color, `quedan ${m(r.left)}`, cover === r.account_id, setCover))}
+                        </div>
+                        <p className="follow-note">
+                          {cover === FREE
+                            ? 'Sale de tu plata libre: baja lo que te queda para gastar.'
+                            : `Le quitamos ${m(overBy)} al presupuesto de ${catName(cover)} (${KIND_WORD[otherCats.find((r) => r.account_id === cover)?.kind]}) este mes.`}
+                          {coverOptions.length === 0 && ' Ninguna otra categoría tiene saldo suficiente para cubrirlo.'}
+                        </p>
+                      </div>
+                    )}
+                    {spareBy > 0 && (
+                      <div className="follow-up">
+                        <p className="follow-q">Te faltarían <b className="num">{m(spareBy)}</b> para completar {picked.name}. ¿Con esto ya quedó pagado este mes?</p>
+                        <div className="follow-choice">
+                          <button type="button" className={`choice ${!settled ? 'on' : ''}`} onClick={() => setSettled(false)}>
+                            <span className="choice-dot" /><span><b>No, falta pagar</b><small>Los {m(spareBy)} siguen reservados.</small></span>
+                          </button>
+                          <button type="button" className={`choice ${settled ? 'on' : ''}`} onClick={() => setSettled(true)}>
+                            <span className="choice-dot" /><span><b>Sí, salió menos</b><small>Hubo descuento o vino más barato.</small></span>
+                          </button>
+                        </div>
+                        {settled && (
+                          <>
+                            <p className="follow-q">¿Dónde dejas los <b className="num">{m(spareBy)}</b> que sobraron?</p>
+                            <div className="cat-chips">
+                              {chip(FREE, FREE_LABEL, FREE_COLOR, fig && `quedan ${m(Math.max(fig.free, 0))}`, spare === FREE, setSpare)}
+                              {otherCats.map((r) => chip(r.account_id, r.name, r.color, null, spare === r.account_id, setSpare))}
+                            </div>
+                            <p className="follow-note">
+                              {spare === FREE
+                                ? 'Vuelven a tu plata libre: sube lo que te queda para gastar.'
+                                : `Se suman al presupuesto de ${catName(spare)} este mes.`}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
                 {mode === 'ingreso' && <span className="muted" style={{ fontSize: 12 }}>Se suma a tu sueldo y aumenta lo que te queda para gastar este mes.</span>}
