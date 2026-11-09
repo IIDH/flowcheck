@@ -1,5 +1,6 @@
 import { requireUser, parsePeriod } from '../_lib/supabase.js'
 import { serverError, rateLimit } from '../_lib/http.js'
+import { installmentAt } from '../_lib/finance.js'
 
 /**
  * POST /api/months/open  { year, month, income? }
@@ -58,13 +59,21 @@ export default async function handler(req, res) {
     for (const it of items.data) prevPlan.set(it.account_id, Number(it.planned))
   }
 
+  // Deudas en cuotas: entran solo en los meses de sus cuotas; terminadas, se archivan
+  const finished = accounts.data.filter((a) => installmentAt(a, period) === 'after').map((a) => a.id)
+  if (finished.length) {
+    const arch = await sb.from('accounts').update({ archived: true }).in('id', finished)
+    if (arch.error) return serverError(res, arch.error)
+  }
+
   const rows = accounts.data
     .filter((a) => a.kind !== 'ingreso' && !a.is_free)
+    .filter((a) => { const k = installmentAt(a, period); return k === null || typeof k === 'object' })
     .map((a) => ({
       user_id: user.id,
       month_id: newMonth.id,
       account_id: a.id,
-      planned: prevPlan.has(a.id) ? prevPlan.get(a.id) : Number(a.default_amount)
+      planned: prevPlan.has(a.id) && !a.installments ? prevPlan.get(a.id) : Number(a.default_amount)
     }))
 
   if (rows.length) {

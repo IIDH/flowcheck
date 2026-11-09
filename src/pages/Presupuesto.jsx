@@ -10,7 +10,7 @@ import { IconCheck, IconEdit, IconLock, IconPlus, IconTrash, IconX } from '../co
 import { useApp } from '../context/AppContext'
 import { useAccounts, useMonth } from '../hooks/useMonth'
 import { api, todayISO } from '../lib/api'
-import { monthFigures } from '../lib/figures'
+import { installmentAt, monthFigures } from '../lib/figures'
 import { friendlyError, KINDS, money, parseAmount, pct, periodLabel } from '../lib/format'
 import { ACCOUNT_COLORS, CHART } from '../lib/palette'
 import { supabase } from '../lib/supabase'
@@ -277,11 +277,12 @@ export default function Presupuesto() {
 
   if (loading || accounts === null) return <>{head}<div className="skeleton" style={{ height: 420 }} /></>
   const activeCats = accounts.filter((a) => !a.archived && !a.is_free && a.kind !== 'ingreso')
-  if (!month) return <>{head}<EmptyMonth hasAccounts={activeCats.length > 0} onOpened={reload} /></>
+  if (!month) return <>{head}<EmptyMonth hasAccounts={activeCats.length > 0} onOpened={() => { reload(); reloadAccounts() }} /></>
 
   const f = monthFigures({ income: month.income, carryIn, rows })
   const closed = month.closed
-  const notInPlan = activeCats.filter((a) => !rows.some((r) => r.account_id === a.id))
+  // Deudas en cuotas fuera de su rango no se ofrecen para agregar
+  const notInPlan = activeCats.filter((a) => !rows.some((r) => r.account_id === a.id) && !['before', 'after'].includes(installmentAt(a, period)))
   const archived = accounts.filter((a) => a.archived && !a.is_free && a.kind !== 'ingreso')
 
   const segments = [
@@ -398,10 +399,10 @@ export default function Presupuesto() {
 
   async function toggleClosed() {
     if (!closed) return setClosing(true)
-    if (!(await confirm({ title: `¿Reabrir ${periodLabel(period)}?`, message: 'Lo que había pasado al mes siguiente se anula. Al volver a cerrar se recalcula.', confirmText: 'Reabrir mes' }))) return
+    if (!(await confirm({ title: `¿Reabrir ${periodLabel(period)}?`, message: 'Lo que había pasado al mes siguiente se anula (también la deuda en cuotas, si la creaste al cerrar). Al volver a cerrar se recalcula.', confirmText: 'Reabrir mes' }))) return
     try {
-      await api('/months/close', { method: 'POST', body: { ...period, reopen: true } })
-      notify('Mes reabierto')
+      const r = await api('/months/close', { method: 'POST', body: { ...period, reopen: true } })
+      notify(r.debtKept ? 'Mes reabierto. La deuda en cuotas ya tenía pagos: quedó archivada.' : r.debtRemoved ? 'Mes reabierto · se quitó la deuda en cuotas' : 'Mes reabierto')
       reload()
     } catch (err) {
       notify(friendlyError(err), 'error')
@@ -514,6 +515,7 @@ export default function Presupuesto() {
                             <IconEdit size={12} className="budget-edit" />
                           </button>
                           <div className="budget-badges">
+                            {kind === 'fijo' && typeof installmentAt(acc, period) === 'object' && installmentAt(acc, period) && <span className="badge badge-warn">Cuota {installmentAt(acc, period).n} de {installmentAt(acc, period).of}</span>}
                             {kind === 'fijo' && acc?.due_day && !done && <span className="badge">día {acc.due_day}</span>}
                             {done && <span className="badge badge-ok"><IconCheck size={11} /> {kind === 'ahorro' ? 'Meta' : 'Pagado'}</span>}
                             {over && <span className="badge badge-danger">+{m(r.actual - r.planned)}</span>}
@@ -596,7 +598,7 @@ export default function Presupuesto() {
           available={Math.round((f.totalIncome - f.spent - f.saved) * 100) / 100}
           savingsAccounts={accounts.filter((a) => a.kind === 'ahorro' && !a.archived)}
           onClose={() => setClosing(false)}
-          onDone={() => { setClosing(false); reload() }}
+          onDone={() => { setClosing(false); refresh() }}
         />
       )}
     </>

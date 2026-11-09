@@ -63,3 +63,16 @@ export function daysLeftIn({ year, month }, today = new Date()) {
   if (today.getFullYear() !== year || today.getMonth() + 1 !== month) return null
   return new Date(year, month, 0).getDate() - today.getDate() + 1
 }
+
+/**
+ * Cuota de una deuda en un mes: { n, of } si cae dentro de las cuotas,
+ * 'before' / 'after' si no, null si la cuenta no es en cuotas.
+ */
+export function installmentAt(account, { year, month }) {
+  if (!account?.installments || !account.installment_start) return null
+  const [y, m] = String(account.installment_start).split('-').map(Number)
+  const k = year * 12 + month - (y * 12 + m)
+  if (k < 0) return 'before'
+  if (k >= account.installments) return 'after'
+  return { n: k + 1, of: account.installments }
+}
