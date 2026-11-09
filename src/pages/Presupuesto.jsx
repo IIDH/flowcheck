@@ -301,8 +301,9 @@ export default function Presupuesto() {
   }
   const removeFromMonth = (r) => run(() => supabase.from('budget_items').delete().eq('month_id', month.id).eq('account_id', r.account_id), `${r.name} quitada de este mes`)
   const addBack = (a) => run(() => supabase.from('budget_items').upsert({ month_id: month.id, account_id: a.id, planned: a.default_amount }, { onConflict: 'month_id,account_id' }), `${a.name} agregada`)
+  // Fijos: abre la hoja con el monto que falta, para poder corregirlo si salió más o menos
   const pay = (r) =>
-    run(
+    r.kind === 'fijo' ? openAdd({ mode: 'gasto', accountId: r.account_id, amount: r.planned - r.actual }) : run(
       () => supabase.from('transactions').insert({ month_id: month.id, account_id: r.account_id, amount: r.planned - r.actual, occurred_on: dateInPeriod(period), description: r.kind === 'ahorro' ? 'Ahorro del mes' : 'Pagado' }),
       r.kind === 'ahorro' ? `${r.name}: ahorro anotado` : `${r.name} marcada como pagada`
     )

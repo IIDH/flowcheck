@@ -10,13 +10,15 @@ import { useAccounts, useMonth } from '../hooks/useMonth'
 import { friendlyError, KINDS, money } from '../lib/format'
 import { cacheGet, cacheSet, dropQueued, getOutbox, isNetworkError, subscribeOutbox } from '../lib/offline'
 import { FREE_LABEL } from '../lib/freeBalance'
+import { moveLabel, movesOf, revertMoves } from '../lib/budgetMoves'
 import { supabase } from '../lib/supabase'
 
 const FILTERS = [
   { key: 'all', label: 'Todo', test: () => true },
   { key: 'gasto', label: 'Gastos', test: (t) => ['fijo', 'variable'].includes(t.accounts?.kind) && t.kind !== 'retiro' },
   { key: 'ingreso', label: 'Ingresos', test: (t) => t.accounts?.kind === 'ingreso' },
-  { key: 'ahorro', label: 'Ahorro', test: (t) => t.accounts?.kind === 'ahorro' }
+  { key: 'ahorro', label: 'Ahorro', test: (t) => t.accounts?.kind === 'ahorro' },
+  { key: 'ajuste', label: 'Ajustes', test: (t) => !!t.move }
 ]
 
 /** Todo lo anotado en el mes: gastos, ingresos y ahorro. Para anotar se usa la hoja "+". */
@@ -25,9 +27,11 @@ export default function Movimientos() {
   const confirm = useConfirm()
   const openAdd = useQuickAdd()
   const { loading, month, reload: reloadMonth } = useMonth()
-  const { accounts } = useAccounts()
+  const { accounts } = useAccounts({ includeArchived: true })
   const [params, setParams] = useSearchParams()
   const [txs, setTxs] = useState(null)
+  // Ajustes de presupuesto (exceso / sobrante en gastos fijos)
+  const [moves, setMoves] = useState([])
   const [filter, setFilter] = useState('all')
   const [outbox, setOutbox] = useState(getOutbox)
   useEffect(() => subscribeOutbox(setOutbox), [])
@@ -55,6 +59,8 @@ export default function Movimientos() {
     }
     cacheSet(key, data ?? [])
     setTxs(data ?? [])
+    const mv = await supabase.from('budget_moves').select('*').eq('month_id', month.id)
+    setMoves(mv.error ? [] : (mv.data ?? []))
   }, [month, notify, user?.id])
   useEffect(() => { loadTxs() }, [loadTxs])
   useEffect(() => {
@@ -66,8 +72,13 @@ export default function Movimientos() {
   const all = useMemo(() => {
     const queued = month ? outbox.filter((t) => t.month_id === month.id).map((t) => ({ ...t, pending: true })) : []
     const ids = new Set(queued.map((t) => t.id))
-    return [...queued, ...(txs ?? []).filter((t) => !ids.has(t.id))].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
-  }, [txs, outbox, month])
+    // Cada ajuste va justo debajo del gasto que lo originó
+    const adj = moves.map((mv) => ({ ...mv, move: true }))
+    const list = []
+    for (const t of [...queued, ...(txs ?? []).filter((t) => !ids.has(t.id))]) list.push(t, ...adj.filter((mv) => mv.transaction_id === t.id))
+    list.push(...adj.filter((mv) => !list.includes(mv)))
+    return list.sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
+  }, [txs, outbox, month, moves])
   const filtered = useMemo(() => all.filter(test), [all, test])
 
   const isPlus = (t) => t.accounts?.kind === 'ingreso' || t.kind === 'retiro'
@@ -75,6 +86,7 @@ export default function Movimientos() {
     let out = 0
     let inn = 0
     for (const t of all) {
+      if (t.move) continue
       if (isPlus(t)) inn += Number(t.amount)
       else if (t.accounts?.kind !== 'ahorro') out += Number(t.amount)
     }
@@ -90,9 +102,32 @@ export default function Movimientos() {
     return [...map.entries()]
   }, [filtered])
 
+  const nameOf = (id) => {
+    if (!id) return FREE_LABEL
+    const a = accounts?.find((x) => x.id === id)
+    return a ? (a.is_free ? FREE_LABEL : a.name) : 'una categoría'
+  }
+  const colorOf = (id) => accounts?.find((x) => x.id === id)?.color
+
+  async function removeMove(mv) {
+    const l = moveLabel(mv, nameOf)
+    if (!(await confirm({ tone: 'danger', title: '¿Deshacer este ajuste?', message: <><b>{l.title}</b> · {money(mv.amount, currency)}<br />Los montos del presupuesto vuelven a como estaban. El gasto queda anotado.</>, confirmText: 'Deshacer' }))) return
+    const { error } = await revertMoves([mv])
+    if (error) return notify(friendlyError(error), 'error')
+    notify('Ajuste deshecho')
+    loadTxs()
+    reloadMonth()
+  }
+
   async function remove(t) {
-    if (!(await confirm({ tone: 'danger', title: '¿Borrar esto?', message: <><b>{t.accounts?.is_free ? FREE_LABEL : t.accounts?.name}</b> · {money(t.amount, currency)}{t.description ? ` · ${t.description}` : ''}<br />No se puede deshacer.</>, confirmText: 'Borrar' }))) return
+    if (t.move) return removeMove(t)
+    const linked = t.pending ? [] : await movesOf(t.id)
+    if (!(await confirm({ tone: 'danger', title: '¿Borrar esto?', message: <><b>{t.accounts?.is_free ? FREE_LABEL : t.accounts?.name}</b> · {money(t.amount, currency)}{t.description ? ` · ${t.description}` : ''}<br />{linked.length > 0 && <>También se deshace su ajuste: <b>{moveLabel(linked[0], nameOf).title}</b>.<br /></>}No se puede deshacer.</>, confirmText: 'Borrar' }))) return
     if (t.pending) return dropQueued(t.id)
+    if (linked.length) {
+      const rv = await revertMoves(linked)
+      if (rv.error) return notify(friendlyError(rv.error), 'error')
+    }
     const { error } = await supabase.from('transactions').delete().eq('id', t.id)
     if (error) return notify(friendlyError(error), 'error')
     notify('Borrado')
@@ -137,7 +172,28 @@ export default function Movimientos() {
             <div key={day}>
               <div className="group-title"><span className="dc-mono muted">{dayLabel(day)}</span></div>
               <div className="list">
-                {list.map((t) => (
+                {list.map((t) => t.move ? (
+                  <div key={t.id} className="list-row tx-row tx-adjust">
+                    <div className="row" style={{ minWidth: 0 }}>
+                      <span className="swatch" style={{ background: colorOf(t.account_id) }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600 }}>{moveLabel(t, nameOf).title}</div>
+                        <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span className="badge" style={{ marginRight: 6 }}>Ajuste</span>
+                          {moveLabel(t, nameOf).detail}
+                        </div>
+                      </div>
+                    </div>
+                    <b className="num" style={{ color: moveLabel(t, nameOf).plus ? 'var(--ok)' : 'var(--muted)' }}>
+                      {moveLabel(t, nameOf).plus ? '+' : '−'}{money(t.amount, currency)}
+                    </b>
+                    {!month.closed && (
+                      <button className="dc-icon-btn" style={{ width: 32, height: 32 }} onClick={() => remove(t)} aria-label="Deshacer ajuste">
+                        <IconTrash size={14} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
                   <div key={t.id} className="list-row tx-row">
                     <div className="row" style={{ minWidth: 0 }}>
                       <span className="swatch" style={{ background: t.accounts?.color }} />

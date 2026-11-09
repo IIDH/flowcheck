@@ -108,9 +108,10 @@ export function DataCard() {
   async function exportData() {
     setBusy(true)
     try {
-      const tables = ['profiles', 'accounts', 'months', 'budget_items', 'transactions']
+      const tables = ['profiles', 'accounts', 'months', 'budget_items', 'transactions', 'budget_moves']
       const results = await Promise.all(tables.map((t) => supabase.from(t).select('*')))
-      const failed = results.find((r) => r.error)
+      // budget_moves es opcional (puede no existir si aún no se corre la migración 0008)
+      const failed = results.find((r, i) => r.error && tables[i] !== 'budget_moves')
       if (failed) throw failed.error
       const data = Object.fromEntries(tables.map((t, i) => [t, results[i].data]))
       const stamp = new Date().toISOString().slice(0, 10)
