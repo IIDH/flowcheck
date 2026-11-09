@@ -1,5 +1,23 @@
 const round = (n) => Math.round(n * 100) / 100
 
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+export const monthName = ({ year, month }) => `${MONTHS[month - 1]} ${year}`
+export const nextPeriod = ({ year, month }) => (month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 })
+const monthIndex = ({ year, month }) => year * 12 + month - 1
+
+/**
+ * Cuota de una deuda en un mes: { n, of } si el mes cae dentro de las cuotas,
+ * 'before' / 'after' si no. null si la cuenta no es en cuotas.
+ */
+export function installmentAt(account, period) {
+  if (!account.installments || !account.installment_start) return null
+  const [y, m] = String(account.installment_start).split('-').map(Number)
+  const k = monthIndex(period) - monthIndex({ year: y, month: m })
+  if (k < 0) return 'before'
+  if (k >= account.installments) return 'after'
+  return { n: k + 1, of: account.installments }
+}
+
 /** Lo que llega desde el mes anterior registrado (su carry_out, si se cerró). */
 export async function carryInFor(sb, { year, month }) {
   const prev = await sb
